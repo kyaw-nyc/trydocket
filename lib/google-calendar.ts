@@ -45,6 +45,7 @@ export async function createEvent(
     location?: string;
     start: { dateTime: string; timeZone?: string };
     end: { dateTime: string; timeZone?: string };
+    recurrence?: string[];
   }
 ) {
   const calendar = getCalendar(accessToken);

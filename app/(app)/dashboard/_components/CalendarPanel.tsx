@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import { signOut } from "next-auth/react";
-import { useCalendar } from "./CalendarContext";
+import { useCalendar, PendingEvent } from "./CalendarContext";
 import EventModal from "./EventModal";
 
 type CalendarEvent = {
@@ -12,6 +12,7 @@ type CalendarEvent = {
   recurringEventId?: string;
   start?: { dateTime?: string; date?: string };
   end?: { dateTime?: string; date?: string };
+  isPending?: boolean;
 };
 
 type ColorDef = {
@@ -26,6 +27,11 @@ const HOURS = Array.from({ length: 24 }, (_, i) => i);
 
 const DEFAULT_COLOR: ColorDef = {
   background: "#039be5",
+  foreground: "#ffffff",
+};
+
+const PENDING_COLOR: ColorDef = {
+  background: "#10b981",
   foreground: "#ffffff",
 };
 
@@ -65,16 +71,18 @@ function isToday(date: Date): boolean {
   return isSameDay(date, new Date());
 }
 
-function getEventPosition(event: CalendarEvent): { top: number; height: number } | null {
-  if (!event.start?.dateTime) return null;
+function getEventPosition(event: CalendarEvent | { start: { dateTime: string }; end: { dateTime: string } }): { top: number; height: number } | null {
+  const startDateTime = 'start' in event && event.start && 'dateTime' in event.start ? event.start.dateTime : null;
+  if (!startDateTime) return null;
 
-  const start = new Date(event.start.dateTime);
+  const start = new Date(startDateTime);
   const startMinutes = start.getHours() * 60 + start.getMinutes();
   const top = (startMinutes / 60) * HOUR_HEIGHT;
 
   let durationMinutes = 60;
-  if (event.end?.dateTime) {
-    const end = new Date(event.end.dateTime);
+  const endDateTime = 'end' in event && event.end && 'dateTime' in event.end ? event.end.dateTime : null;
+  if (endDateTime) {
+    const end = new Date(endDateTime);
     durationMinutes = (end.getTime() - start.getTime()) / (1000 * 60);
   }
 
@@ -112,7 +120,16 @@ function getCurrentTimePosition(): number {
 }
 
 export default function CalendarPanel() {
-  const { refreshKey, triggerRefresh, theme, setTheme } = useCalendar();
+  const { 
+    refreshKey, 
+    triggerRefresh, 
+    theme, 
+    setTheme,
+    pendingEvents,
+    clearPendingEvents,
+    confirmPendingEvents,
+    isConfirming,
+  } = useCalendar();
   const [events, setEvents] = useState<CalendarEvent[]>([]);
   const [colors, setColors] = useState<ColorsMap>({});
   const [defaultColor, setDefaultColor] = useState<string | null>(null);
@@ -132,6 +149,9 @@ export default function CalendarPanel() {
   const weekDates = getWeekDates(baseDate);
 
   const getEventColor = (event: CalendarEvent): ColorDef => {
+    if (event.isPending) {
+      return PENDING_COLOR;
+    }
     if (event.colorId && colors[event.colorId]) {
       return colors[event.colorId];
     }
@@ -216,8 +236,20 @@ export default function CalendarPanel() {
     triggerRefresh();
   };
 
+  // Convert pending events to calendar events for display
+  const pendingCalendarEvents: CalendarEvent[] = pendingEvents.map((pe: PendingEvent) => ({
+    id: pe.id,
+    summary: pe.summary,
+    start: { dateTime: pe.startDateTime },
+    end: { dateTime: pe.endDateTime },
+    isPending: true,
+  }));
+
+  // Combine real events with pending events
+  const allEvents = [...events, ...pendingCalendarEvents];
+
   const getEventsForDay = (date: Date): CalendarEvent[] => {
-    return events.filter((event) => {
+    return allEvents.filter((event) => {
       const eventStart = event.start?.dateTime || event.start?.date;
       if (!eventStart) return false;
       const eventDate = new Date(eventStart);
@@ -233,7 +265,67 @@ export default function CalendarPanel() {
   const todayIndex = weekDates.findIndex((d) => isToday(d));
 
   return (
-    <div className={`flex h-full flex-col ${isDark ? "bg-[#202124]" : "bg-white"}`}>
+    <div className={`flex h-full flex-col ${isDark ? "bg-[#131314]" : "bg-white"}`}>
+      {/* Pending Events Confirmation Banner */}
+      {pendingEvents.length > 0 && (
+        <div className={`flex items-center justify-between px-4 py-3 ${
+          isDark ? "bg-emerald-900/30 border-b border-emerald-800" : "bg-emerald-50 border-b border-emerald-200"
+        }`}>
+          <div className="flex items-center gap-3">
+            <div className={`flex h-8 w-8 items-center justify-center rounded-full ${
+              isDark ? "bg-emerald-600" : "bg-emerald-500"
+            }`}>
+              <svg className="h-4 w-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+              </svg>
+            </div>
+            <div>
+              <p className={`text-sm font-medium ${isDark ? "text-emerald-100" : "text-emerald-800"}`}>
+                {pendingEvents.length} event{pendingEvents.length > 1 ? "s" : ""} ready to add
+              </p>
+              <p className={`text-xs ${isDark ? "text-emerald-300/80" : "text-emerald-600"}`}>
+                Review the green preview{pendingEvents.length > 1 ? "s" : ""} on your calendar, then confirm to add to Google Calendar
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={clearPendingEvents}
+              disabled={isConfirming}
+              className={`rounded-lg px-3 py-1.5 text-sm font-medium transition-colors disabled:opacity-50 ${
+                isDark 
+                  ? "text-emerald-200 hover:bg-emerald-800/50" 
+                  : "text-emerald-700 hover:bg-emerald-100"
+              }`}
+            >
+              Cancel
+            </button>
+            <button
+              onClick={confirmPendingEvents}
+              disabled={isConfirming}
+              className="flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-1.5 text-sm font-medium text-white transition-colors hover:bg-emerald-700 disabled:opacity-50"
+            >
+              {isConfirming ? (
+                <>
+                  <svg className="h-4 w-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                  </svg>
+                  Adding...
+                </>
+              ) : (
+                <>
+                  <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                  </svg>
+                  Confirm & Add
+                </>
+              )}
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Header */}
       <div className={`flex items-center justify-between border-b px-4 py-2 ${isDark ? "border-[#3c4043]" : "border-gray-200"}`}>
         <div className="flex items-center gap-2">
@@ -344,7 +436,7 @@ export default function CalendarPanel() {
       </div>
 
       {/* Time grid */}
-      <div ref={scrollRef} className={`flex-1 overflow-y-auto ${isDark ? "bg-[#202124]" : "bg-white"}`}>
+      <div ref={scrollRef} className={`flex-1 overflow-y-auto ${isDark ? "bg-[#131314]" : "bg-white"}`}>
         <div className="flex relative" style={{ height: HOUR_HEIGHT * 24 }}>
           <div className="w-16 flex-shrink-0 relative">
             {HOURS.map((hour) => (
@@ -386,8 +478,12 @@ export default function CalendarPanel() {
                   return (
                     <div
                       key={event.id}
-                      onClick={() => setSelectedEvent(event)}
-                      className="absolute left-0.5 right-0.5 rounded px-1.5 py-0.5 text-xs overflow-hidden z-10 cursor-pointer transition-colors"
+                      onClick={() => !event.isPending && setSelectedEvent(event)}
+                      className={`absolute left-0.5 right-0.5 rounded px-1.5 py-0.5 text-xs overflow-hidden z-10 transition-colors ${
+                        event.isPending 
+                          ? "cursor-default ring-2 ring-offset-1 animate-pulse" 
+                          : "cursor-pointer"
+                      }`}
                       style={{
                         top: pos.top,
                         height: pos.height,
@@ -395,11 +491,20 @@ export default function CalendarPanel() {
                         color: textColor,
                         // @ts-expect-error CSS custom property
                         "--hover-bg": hoverColor,
+                        ...(event.isPending && {
+                          ringColor: isDark ? "#34d399" : "#10b981",
+                          boxShadow: `0 0 0 2px ${isDark ? "#34d399" : "#10b981"}`,
+                        }),
                       }}
-                      onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = hoverColor)}
-                      onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = color.background)}
+                      onMouseEnter={(e) => !event.isPending && (e.currentTarget.style.backgroundColor = hoverColor)}
+                      onMouseLeave={(e) => !event.isPending && (e.currentTarget.style.backgroundColor = color.background)}
                     >
-                      <p className="font-medium truncate">{event.summary || "Untitled"}</p>
+                      <div className="flex items-center gap-1">
+                        {event.isPending && (
+                          <span className="text-[10px] font-bold uppercase tracking-wide opacity-90">Preview</span>
+                        )}
+                        <p className="font-medium truncate">{event.summary || "Untitled"}</p>
+                      </div>
                       {pos.height > 30 && event.start?.dateTime && (
                         <p className="truncate" style={{ color: timeColor }}>
                           {formatEventTime(event.start.dateTime)}
@@ -415,7 +520,7 @@ export default function CalendarPanel() {
       </div>
 
       {/* Event edit modal */}
-      {selectedEvent && (
+      {selectedEvent && !selectedEvent.isPending && (
         <EventModal
           event={selectedEvent}
           onClose={() => setSelectedEvent(null)}

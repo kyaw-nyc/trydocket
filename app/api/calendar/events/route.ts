@@ -36,6 +36,17 @@ export async function GET(req: NextRequest) {
   }
 }
 
+type PendingEvent = {
+  id: string;
+  summary: string;
+  description?: string;
+  location?: string;
+  startDateTime: string;
+  endDateTime: string;
+  timeZone: string;
+  recurrence?: string[];
+};
+
 export async function POST(req: NextRequest) {
   const session = await auth();
 
@@ -46,6 +57,44 @@ export async function POST(req: NextRequest) {
   const body = await req.json();
 
   try {
+    // Handle batch creation from pending events
+    if (body.events && Array.isArray(body.events)) {
+      const createdEvents = [];
+      const errors = [];
+
+      for (const pendingEvent of body.events as PendingEvent[]) {
+        try {
+          const event = await createEvent(session.accessToken, {
+            summary: pendingEvent.summary,
+            description: pendingEvent.description,
+            location: pendingEvent.location,
+            start: {
+              dateTime: pendingEvent.startDateTime,
+              timeZone: pendingEvent.timeZone,
+            },
+            end: {
+              dateTime: pendingEvent.endDateTime,
+              timeZone: pendingEvent.timeZone,
+            },
+            recurrence: pendingEvent.recurrence,
+          });
+          createdEvents.push(event);
+        } catch (err) {
+          errors.push({
+            pendingId: pendingEvent.id,
+            error: err instanceof Error ? err.message : "Failed to create event",
+          });
+        }
+      }
+
+      return NextResponse.json({
+        events: createdEvents,
+        errors: errors.length > 0 ? errors : undefined,
+        success: errors.length === 0,
+      });
+    }
+
+    // Handle single event creation (legacy)
     const event = await createEvent(session.accessToken, body);
     return NextResponse.json({ event });
   } catch (error) {
