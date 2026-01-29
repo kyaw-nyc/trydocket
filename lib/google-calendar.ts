@@ -9,11 +9,12 @@ function getCalendar(accessToken: string) {
 export async function listEvents(
   accessToken: string,
   timeMin?: string,
-  timeMax?: string
+  timeMax?: string,
+  calendarId = "primary"
 ) {
   const calendar = getCalendar(accessToken);
   const res = await calendar.events.list({
-    calendarId: "primary",
+    calendarId,
     timeMin: timeMin || new Date().toISOString(),
     timeMax:
       timeMax ||
@@ -22,7 +23,12 @@ export async function listEvents(
     orderBy: "startTime",
     maxResults: 100,
   });
-  return res.data.items || [];
+  const items = res.data.items || [];
+  // Tag events with their source calendar for downstream filtering/labeling
+  items.forEach((item) => {
+    (item as { calendarId?: string }).calendarId = calendarId;
+  });
+  return items;
 }
 
 export async function getColors(accessToken: string) {
@@ -35,6 +41,16 @@ export async function getCalendarMetadata(accessToken: string) {
   const calendar = getCalendar(accessToken);
   const res = await calendar.calendarList.get({ calendarId: "primary" });
   return res.data;
+}
+
+export async function listCalendars(accessToken: string) {
+  const calendar = getCalendar(accessToken);
+  const res = await calendar.calendarList.list({
+    maxResults: 250,
+    showDeleted: false,
+    showHidden: false,
+  });
+  return res.data.items || [];
 }
 
 export async function createEvent(
@@ -84,4 +100,17 @@ export async function deleteEvent(accessToken: string, eventId: string) {
     eventId,
   });
   return { success: true };
+}
+
+export async function getEvent(
+  accessToken: string,
+  eventId: string,
+  calendarId = "primary"
+) {
+  const calendar = getCalendar(accessToken);
+  const res = await calendar.events.get({
+    calendarId,
+    eventId,
+  });
+  return res.data;
 }

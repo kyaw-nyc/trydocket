@@ -26,10 +26,23 @@ type PendingEventData = {
   recurrence?: string[];
 };
 
+type CalendarToolArgs = {
+  timeMin?: string;
+  timeMax?: string;
+  summary?: string;
+  description?: string;
+  location?: string;
+  startDateTime?: string;
+  endDateTime?: string;
+  timeZone?: string;
+  recurrence?: string[];
+  eventId?: string;
+};
+
 async function executeCalendarTool(
   name: string,
   // tool args vary per tool; keep flexible and validate per-case
-  args: any,
+  args: CalendarToolArgs,
   accessToken: string
 ): Promise<{ result: string; pendingEvent?: PendingEventData }> {
   switch (name) {
@@ -40,7 +53,7 @@ async function executeCalendarTool(
         args.timeMax
       );
       // Format events nicely for the AI
-      const formattedEvents = events.map((event: { id?: string; summary?: string; start?: { dateTime?: string; date?: string }; end?: { dateTime?: string; date?: string } }) => ({
+      const formattedEvents = events.map((event) => ({
         id: event.id,
         summary: event.summary,
         start: event.start?.dateTime || event.start?.date,
@@ -50,12 +63,47 @@ async function executeCalendarTool(
     }
     case "propose_event": {
       // Round times to nearest 5 minutes for cleaner scheduling
-      const startDateTime = roundToNearest5Minutes(args.startDateTime);
-      const endDateTime = roundToNearest5Minutes(args.endDateTime);
+      const startDateTime = roundToNearest5Minutes(args.startDateTime!);
+      const endDateTime = roundToNearest5Minutes(args.endDateTime!);
+      
+      // Check for conflicts with existing events
+      let conflicts: Array<{ summary?: string; start?: string; end?: string }> = [];
+      try {
+        const existingEvents = await listEvents(
+          accessToken,
+          startDateTime,
+          endDateTime
+        );
+        
+        // Filter for overlapping events
+        const startMs = new Date(startDateTime).getTime();
+        const endMs = new Date(endDateTime).getTime();
+        
+        conflicts = existingEvents
+          .filter((event) => {
+            const eventStart = event.start?.dateTime || event.start?.date;
+            const eventEnd = event.end?.dateTime || event.end?.date;
+            if (!eventStart) return false;
+
+            const eventStartMs = new Date(eventStart).getTime();
+            const eventEndMs = eventEnd ? new Date(eventEnd).getTime() : eventStartMs + 60 * 60 * 1000; // default 1 hour
+
+            // Check for overlap: events overlap if one starts before the other ends
+            return !(endMs <= eventStartMs || startMs >= eventEndMs);
+          })
+          .map((event) => ({
+            summary: event.summary ?? undefined,
+            start: event.start?.dateTime ?? event.start?.date ?? undefined,
+            end: event.end?.dateTime ?? event.end?.date ?? undefined,
+          }));
+      } catch (error) {
+        // If conflict check fails, proceed anyway but log it
+        console.error("Failed to check for conflicts:", error);
+      }
       
       const pendingEvent: PendingEventData = {
         id: `pending-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-        summary: args.summary,
+        summary: args.summary!,
         description: args.description,
         location: args.location,
         startDateTime,
@@ -67,18 +115,24 @@ async function executeCalendarTool(
       return {
         result: JSON.stringify({
           success: true,
-          message: `Event "${args.summary}" has been proposed and is now showing as a preview on the calendar. The user needs to click "Confirm" to add it to Google Calendar.`,
+          message: conflicts.length > 0
+            ? `Event "${args.summary}" has been proposed, but there ${conflicts.length === 1 ? 'is' : 'are'} ${conflicts.length} conflicting event${conflicts.length > 1 ? 's' : ''} during this time. Please inform the user about the conflict(s).`
+            : `Event "${args.summary}" has been proposed and is now showing as a preview on the calendar. The user needs to click "Confirm" to add it to Google Calendar.`,
           event: {
             summary: pendingEvent.summary,
             start: pendingEvent.startDateTime,
             end: pendingEvent.endDateTime,
             recurrence: pendingEvent.recurrence,
           },
+          conflicts: conflicts.length > 0 ? conflicts : undefined,
         }),
         pendingEvent,
       };
     }
     case "update_event": {
+      if (!args.eventId) {
+        throw new Error("eventId is required for update_event");
+      }
       const updates: Record<string, unknown> = {};
       if (args.summary) updates.summary = args.summary;
       if (args.description) updates.description = args.description;
@@ -99,6 +153,9 @@ async function executeCalendarTool(
       return { result: JSON.stringify(event) };
     }
     case "delete_event": {
+      if (!args.eventId) {
+        throw new Error("eventId is required for delete_event");
+      }
       const result = await deleteEvent(accessToken, args.eventId);
       return { result: JSON.stringify(result) };
     }
