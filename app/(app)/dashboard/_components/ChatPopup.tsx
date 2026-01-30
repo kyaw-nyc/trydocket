@@ -16,12 +16,21 @@ export default function ChatPopup() {
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const prevPendingCountRef = useRef(pendingEvents.length);
 
   useEffect(() => {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
   }, [messages]);
+
+  // Auto-collapse chat when new pending events are added so user can see the calendar
+  useEffect(() => {
+    if (pendingEvents.length > prevPendingCountRef.current && isOpen) {
+      setIsOpen(false);
+    }
+    prevPendingCountRef.current = pendingEvents.length;
+  }, [pendingEvents.length, isOpen]);
 
   // Get user's timezone
   const getUserTimezone = () => {

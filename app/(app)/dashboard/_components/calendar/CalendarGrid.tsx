@@ -39,9 +39,13 @@ function CalendarGridComponent({
   // Trigger fade effect when week changes
   useEffect(() => {
     if (prevWeekKeyRef.current && prevWeekKeyRef.current !== weekKey) {
-      setIsTransitioning(true);
-      const timer = setTimeout(() => setIsTransitioning(false), 200);
-      return () => clearTimeout(timer);
+      const start = setTimeout(() => setIsTransitioning(true), 0);
+      const end = setTimeout(() => setIsTransitioning(false), 200);
+      prevWeekKeyRef.current = weekKey;
+      return () => {
+        clearTimeout(start);
+        clearTimeout(end);
+      };
     }
     prevWeekKeyRef.current = weekKey;
   }, [weekKey]);

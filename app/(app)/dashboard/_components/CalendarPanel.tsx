@@ -9,7 +9,6 @@ import {
   CalendarHeader,
   CalendarSidebar,
   CalendarGrid,
-  PendingEventsBanner,
 } from "./calendar";
 import { EventDetailsSheet } from "./events";
 import { cn } from "@/lib/utils";
@@ -114,8 +113,6 @@ export default function CalendarPanel() {
               !isMobile && sidebarOpen ? "md:pl-60" : "md:pl-0"
             )}
           >
-            <PendingEventsBanner />
-
             <CalendarGrid
               weekDates={weekDates}
               timezoneAbbr={timezoneAbbr}

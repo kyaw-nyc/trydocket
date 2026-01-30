@@ -32,8 +32,7 @@ export function useCalendarEvents({
   const [localRefreshKey, setLocalRefreshKey] = useState(0);
 
   const fetchControllerRef = useRef<AbortController | null>(null);
-  const eventsCache = useRef<Map<string, CalendarEvent[]>>(new Map());
-  const fetchedRangeRef = useRef<{ start: number; end: number } | null>(null);
+  const fetchIdRef = useRef(0); // Track fetch requests to handle race conditions
 
   const pendingCalendarEvents = useMemo<CalendarEvent[]>(
     () =>
@@ -140,7 +139,7 @@ export function useCalendarEvents({
     localStorage.setItem(STORAGE_KEY, JSON.stringify(selectedCalendarIds));
   }, [selectedCalendarIds, hasLoadedSelection]);
 
-  // Fetch events with prefetching for smoother navigation
+  // Fetch events - simplified without complex caching to avoid race conditions
   useEffect(() => {
     if (!hasLoadedSelection) return;
     if (calendars.length > 0 && selectedCalendarIds.length === 0) {
@@ -156,34 +155,18 @@ export function useCalendarEvents({
       const currentWeekEnd = new Date(weekDates[6]);
       currentWeekEnd.setHours(23, 59, 59, 999);
 
-      // Calculate extended range: ±prefetchWeeks
+      // Calculate extended range: ±prefetchWeeks for smoother navigation
       const timeMin = new Date(currentWeekStart);
       timeMin.setDate(timeMin.getDate() - prefetchWeeks * 7);
       const timeMax = new Date(currentWeekEnd);
       timeMax.setDate(timeMax.getDate() + prefetchWeeks * 7);
 
-      // Check if current week is within already fetched range
-      const fetchedRange = fetchedRangeRef.current;
-      if (
-        fetchedRange &&
-        currentWeekStart.getTime() >= fetchedRange.start &&
-        currentWeekEnd.getTime() <= fetchedRange.end
-      ) {
-        // Already have data for this range, no need to fetch
-        return;
-      }
-
-      const cacheKey = `${timeMin.toISOString()}|${timeMax.toISOString()}|${selectedCalendarIds.join(",")}|${refreshKey}|${localRefreshKey}`;
-      const cached = eventsCache.current.get(cacheKey);
-      if (cached) {
-        setEvents(cached);
-        fetchedRangeRef.current = { start: timeMin.getTime(), end: timeMax.getTime() };
-        return;
-      }
+      // Increment fetch ID to track this request
+      const currentFetchId = ++fetchIdRef.current;
 
       setLoading(true);
 
-      // abort previous fetch if still running
+      // Abort previous fetch if still running
       if (fetchControllerRef.current) {
         fetchControllerRef.current.abort();
       }
@@ -197,6 +180,12 @@ export function useCalendarEvents({
           }`,
           { signal: controller.signal }
         );
+
+        // Only update state if this is still the most recent fetch
+        if (currentFetchId !== fetchIdRef.current) {
+          return;
+        }
+
         if (res.ok) {
           const data = await res.json();
           setEvents(data.events || []);
@@ -204,15 +193,14 @@ export function useCalendarEvents({
           setCalendarColors(data.calendarColors || {});
           setCalendars(data.calendars || []);
           setDefaultColor(data.defaultColor || null);
-          eventsCache.current.set(cacheKey, data.events || []);
-          fetchedRangeRef.current = { start: timeMin.getTime(), end: timeMax.getTime() };
         }
       } catch (error) {
         if ((error as Error).name !== "AbortError") {
           console.error("Failed to fetch events:", error);
         }
       } finally {
-        if (!controller.signal.aborted) {
+        // Only update loading state if this is still the most recent fetch
+        if (currentFetchId === fetchIdRef.current) {
           setLoading(false);
         }
       }
@@ -221,9 +209,7 @@ export function useCalendarEvents({
   }, [weekDates, localRefreshKey, refreshKey, selectedCalendarIds, hasLoadedSelection, calendars.length, prefetchWeeks]);
 
   const handleRefresh = useCallback(() => {
-    // Clear cache and fetched range to force fresh data
-    eventsCache.current.clear();
-    fetchedRangeRef.current = null;
+    // Force fresh data by incrementing refresh key
     setLocalRefreshKey((k) => k + 1);
   }, []);
 
@@ -237,8 +223,6 @@ export function useCalendarEvents({
       if (intervalId) return;
       intervalId = setInterval(() => {
         if (document.visibilityState === "visible") {
-          eventsCache.current.clear();
-          fetchedRangeRef.current = null;
           setLocalRefreshKey((k) => k + 1);
         }
       }, autoRefreshInterval);
@@ -254,8 +238,6 @@ export function useCalendarEvents({
     const handleVisibilityChange = () => {
       if (document.visibilityState === "visible") {
         // Refresh immediately when tab becomes visible
-        eventsCache.current.clear();
-        fetchedRangeRef.current = null;
         setLocalRefreshKey((k) => k + 1);
         startAutoRefresh();
       } else {

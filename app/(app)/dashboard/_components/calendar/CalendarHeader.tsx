@@ -52,7 +52,7 @@ function CalendarHeaderComponent({
           variant="ghost"
           size="icon"
           className={cn(
-            "rounded-full",
+            "rounded-full cursor-pointer",
             isDark && "text-white hover:bg-white/10 hover:text-white"
           )}
           onClick={onToggleSidebar}
@@ -66,7 +66,7 @@ function CalendarHeaderComponent({
             variant="outline"
             size="sm"
             className={cn(
-              "rounded-full px-4 font-semibold",
+              "rounded-full px-4 font-semibold cursor-pointer",
               isDark && "border-white text-white hover:bg-white/10 hover:text-white"
             )}
             onClick={onToday}
@@ -77,7 +77,7 @@ function CalendarHeaderComponent({
             variant="ghost"
             size="icon"
             className={cn(
-              "rounded-full",
+              "rounded-full cursor-pointer",
               isDark && "text-white hover:bg-white/10 hover:text-white"
             )}
             onClick={onPreviousWeek}
@@ -89,7 +89,7 @@ function CalendarHeaderComponent({
             variant="ghost"
             size="icon"
             className={cn(
-              "rounded-full",
+              "rounded-full cursor-pointer",
               isDark && "text-white hover:bg-white/10 hover:text-white"
             )}
             onClick={onNextWeek}
@@ -112,7 +112,7 @@ function CalendarHeaderComponent({
           variant="ghost"
           size="icon"
           className={cn(
-            "rounded-full",
+            "rounded-full cursor-pointer",
             isDark && "text-white hover:bg-white/10 hover:text-white"
           )}
           onClick={onRefresh}
@@ -128,7 +128,7 @@ function CalendarHeaderComponent({
               variant="ghost"
               size="icon"
               className={cn(
-                "rounded-full",
+                "rounded-full cursor-pointer",
                 isDark && "text-white hover:bg-white/10 hover:text-white"
               )}
               title="Settings"
@@ -137,7 +137,7 @@ function CalendarHeaderComponent({
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-44">
-            <DropdownMenuItem onClick={onToggleTheme}>
+            <DropdownMenuItem onClick={onToggleTheme} className="cursor-pointer">
               {isDark ? (
                 <>
                   <Sun className="mr-2 h-4 w-4" />
@@ -151,7 +151,7 @@ function CalendarHeaderComponent({
               )}
             </DropdownMenuItem>
             <DropdownMenuSeparator />
-            <DropdownMenuItem onClick={() => signOut({ callbackUrl: "/landing" })}>
+            <DropdownMenuItem onClick={() => signOut({ callbackUrl: "/landing" })} className="cursor-pointer">
               <LogOut className="mr-2 h-4 w-4" />
               Sign out
             </DropdownMenuItem>

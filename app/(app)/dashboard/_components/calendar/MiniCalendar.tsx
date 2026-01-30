@@ -33,7 +33,7 @@ function MiniCalendarComponent({
           <Button
             variant="ghost"
             size="icon"
-            className="h-7 w-7 rounded-full dark:text-white dark:hover:bg-white/10"
+            className="h-7 w-7 rounded-full cursor-pointer dark:text-white dark:hover:bg-white/10"
             onClick={onPreviousMonth}
             aria-label="Previous month"
           >
@@ -42,7 +42,7 @@ function MiniCalendarComponent({
           <Button
             variant="ghost"
             size="icon"
-            className="h-7 w-7 rounded-full dark:text-white dark:hover:bg-white/10"
+            className="h-7 w-7 rounded-full cursor-pointer dark:text-white dark:hover:bg-white/10"
             onClick={onNextMonth}
             aria-label="Next month"
           >
@@ -69,7 +69,7 @@ function MiniCalendarComponent({
               key={date.toISOString()}
               onClick={() => onSelectDate(date)}
               className={cn(
-                "flex h-8 items-center justify-center rounded-md text-xs transition-colors",
+                "flex h-8 items-center justify-center rounded-md text-xs transition-colors cursor-pointer",
                 today
                   ? "bg-primary text-primary-foreground shadow-sm"
                   : inWeek

@@ -103,11 +103,13 @@ function CalendarSidebarComponent({
   return (
     <aside
       className={cn(
-        "fixed left-0 top-14 z-40 hidden h-[calc(100%-56px)] w-60 transform transition-transform duration-200 md:block bg-background border-r border-border",
+        "fixed left-0 top-14 z-40 hidden h-[calc(100%-56px)] w-60 transform transition-transform duration-200 md:flex md:flex-col bg-background border-r border-border overflow-hidden",
         isOpen ? "translate-x-0" : "-translate-x-full pointer-events-none"
       )}
     >
-      {sidebarContent}
+      <div className="flex flex-1 flex-col overflow-y-auto">
+        {sidebarContent}
+      </div>
     </aside>
   );
 }
