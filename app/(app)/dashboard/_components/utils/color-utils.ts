@@ -33,6 +33,9 @@ export function getEventColor(
   defaultColor: string | null
 ): ColorDef {
   if (event.isPending) {
+    if (event.colorId && colors[event.colorId]) {
+      return colors[event.colorId];
+    }
     return PENDING_COLOR;
   }
   if (event.colorId && colors[event.colorId]) {

@@ -1,12 +1,19 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
-import { openai, calendarTools, getSystemPrompt, roundToNearest5Minutes } from "@/lib/openai";
 import {
-  listEvents,
-  updateEvent,
-  deleteEvent,
-} from "@/lib/google-calendar";
+  openai,
+  calendarTools,
+  getSystemPrompt,
+  roundToNearest5Minutes,
+} from "@/lib/openai";
+import { listEvents, updateEvent, deleteEvent } from "@/lib/google-calendar";
 import type { ChatCompletionMessageParam } from "openai/resources/chat/completions";
+import { ZodError } from "zod";
+import {
+  CalendarToolArgs,
+  validateToolArgs,
+} from "@/lib/tool-validation";
+import { selectColorId } from "@/lib/color-chooser";
 
 // Get user's likely timezone from their location or default to a sensible one
 function getUserTimezone(): string {
@@ -24,6 +31,11 @@ type PendingEventData = {
   endDateTime: string;
   timeZone: string;
   recurrence?: string[];
+  attendees?: Array<{ email: string; displayName?: string; optional?: boolean }>;
+  reminders?: Array<{ minutesBeforeStart: number; method?: string }>;
+  colorId?: string;
+  transparency?: string;
+  visibility?: string;
 };
 
 type PendingDeletionData = {
@@ -34,32 +46,21 @@ type PendingDeletionData = {
   endDateTime: string;
 };
 
-type CalendarToolArgs = {
-  timeMin?: string;
-  timeMax?: string;
-  summary?: string;
-  description?: string;
-  location?: string;
-  startDateTime?: string;
-  endDateTime?: string;
-  timeZone?: string;
-  recurrence?: string[];
-  eventId?: string;
-  calendarId?: string;
-};
-
 async function executeCalendarTool(
   name: string,
   // tool args vary per tool; keep flexible and validate per-case
   args: CalendarToolArgs,
-  accessToken: string
+  accessToken: string,
+  userTimeZone: string
 ): Promise<{ result: string; pendingEvent?: PendingEventData; pendingDeletion?: PendingDeletionData; clearPendingEvents?: boolean }> {
   switch (name) {
     case "list_events": {
       const events = await listEvents(
         accessToken,
         args.timeMin,
-        args.timeMax
+        args.timeMax,
+        args.calendarId,
+        args.query
       );
       // Format events nicely for the AI
       const formattedEvents = events.map((event) => ({
@@ -72,8 +73,9 @@ async function executeCalendarTool(
     }
     case "propose_event": {
       // Round times to nearest 5 minutes for cleaner scheduling
-      const startDateTime = roundToNearest5Minutes(args.startDateTime!);
-      const endDateTime = roundToNearest5Minutes(args.endDateTime!);
+      const tz = args.timeZone || userTimeZone;
+      const startDateTime = roundToNearest5Minutes(args.startDateTime!, tz);
+      const endDateTime = roundToNearest5Minutes(args.endDateTime!, tz);
       
       // Check for conflicts with existing events
       let conflicts: Array<{ summary?: string; start?: string; end?: string }> = [];
@@ -81,7 +83,9 @@ async function executeCalendarTool(
         const existingEvents = await listEvents(
           accessToken,
           startDateTime,
-          endDateTime
+          endDateTime,
+          args.calendarId,
+          args.query
         );
         
         // Filter for overlapping events
@@ -117,7 +121,7 @@ async function executeCalendarTool(
         location: args.location,
         startDateTime,
         endDateTime,
-        timeZone: args.timeZone || getUserTimezone(),
+        timeZone: tz,
         recurrence: Array.isArray(args.recurrence) ? args.recurrence : undefined,
       };
       
@@ -148,14 +152,20 @@ async function executeCalendarTool(
       if (args.location) updates.location = args.location;
       if (args.startDateTime) {
         updates.start = {
-          dateTime: roundToNearest5Minutes(args.startDateTime),
-          timeZone: args.timeZone || "UTC",
+          dateTime: roundToNearest5Minutes(
+            args.startDateTime,
+            args.timeZone || userTimeZone
+          ),
+          timeZone: args.timeZone || userTimeZone,
         };
       }
       if (args.endDateTime) {
         updates.end = {
-          dateTime: roundToNearest5Minutes(args.endDateTime),
-          timeZone: args.timeZone || "UTC",
+          dateTime: roundToNearest5Minutes(
+            args.endDateTime,
+            args.timeZone || userTimeZone
+          ),
+          timeZone: args.timeZone || userTimeZone,
         };
       }
       const event = await updateEvent(accessToken, args.eventId, updates);
@@ -297,19 +307,35 @@ This is the CURRENT state - trust this over conversation history.`;
     for (const toolCall of message.tool_calls) {
       if (toolCall.type !== "function") continue;
 
-      const args = JSON.parse(toolCall.function.arguments);
+      const rawArgs = JSON.parse(toolCall.function.arguments);
       let toolResult: { result: string; pendingEvent?: PendingEventData; pendingDeletion?: PendingDeletionData; clearPendingEvents?: boolean };
 
       try {
+        const args = validateToolArgs(toolCall.function.name, rawArgs);
+
         toolResult = await executeCalendarTool(
           toolCall.function.name,
           args,
-          session.accessToken
+          session.accessToken,
+          userTimezone
         );
 
         // Collect pending events
         if (toolResult.pendingEvent) {
-          pendingEvents.push(toolResult.pendingEvent);
+          const colorId = selectColorId(
+            pendingEvents.map((e) => ({
+              startDateTime: e.startDateTime,
+              endDateTime: e.endDateTime,
+              colorId: e.colorId,
+            })),
+            toolResult.pendingEvent.startDateTime,
+            toolResult.pendingEvent.endDateTime
+          );
+
+          pendingEvents.push({
+            ...toolResult.pendingEvent,
+            colorId,
+          });
         }
 
         // Collect pending deletions
@@ -322,11 +348,20 @@ This is the CURRENT state - trust this over conversation history.`;
           shouldClearPendingEvents = true;
         }
       } catch (error) {
-        toolResult = {
-          result: JSON.stringify({
-            error: `Failed to execute ${toolCall.function.name}: ${error instanceof Error ? error.message : "Unknown error"}`,
-          }),
-        };
+        if (error instanceof ZodError) {
+          toolResult = {
+            result: JSON.stringify({
+              error: `Invalid arguments for ${toolCall.function.name}`,
+              issues: error.issues,
+            }),
+          };
+        } else {
+          toolResult = {
+            result: JSON.stringify({
+              error: `Failed to execute ${toolCall.function.name}: ${error instanceof Error ? error.message : "Unknown error"}`,
+            }),
+          };
+        }
       }
 
       conversationMessages.push({

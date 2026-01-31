@@ -361,6 +361,7 @@ export function useCalendarEvents({
               start: { dateTime: instance.startDateTime },
               end: { dateTime: instance.endDateTime },
               location: pe.location,
+              colorId: pe.colorId,
               isPending: true,
               showConfirmBanner: showBanner,
               pendingGroupId: pe.id, // Links all instances together
@@ -378,6 +379,7 @@ export function useCalendarEvents({
           start: { dateTime: pe.startDateTime },
           end: { dateTime: pe.endDateTime },
           location: pe.location,
+          colorId: pe.colorId,
           isPending: true,
           showConfirmBanner: true,
           pendingGroupId: pe.id,

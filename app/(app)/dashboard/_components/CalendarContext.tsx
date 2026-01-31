@@ -14,6 +14,11 @@ export type PendingEvent = {
   timeZone: string;
   recurrence?: string[];
   calendarId?: string;
+  attendees?: Array<{ email: string; displayName?: string; optional?: boolean }>;
+  reminders?: Array<{ minutesBeforeStart: number; method?: string }>;
+  colorId?: string;
+  transparency?: "opaque" | "transparent";
+  visibility?: "default" | "public" | "private";
 };
 
 export type PendingDeletion = {

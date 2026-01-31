@@ -77,6 +77,11 @@ type PendingEvent = {
   timeZone: string;
   recurrence?: string[];
   calendarId?: string;
+  attendees?: Array<{ email: string; displayName?: string; optional?: boolean }>;
+  reminders?: Array<{ minutesBeforeStart: number; method?: string }>;
+  colorId?: string;
+  transparency?: "opaque" | "transparent";
+  visibility?: "default" | "public" | "private";
 };
 
 export async function POST(req: NextRequest) {
@@ -109,6 +114,19 @@ export async function POST(req: NextRequest) {
                 timeZone: pendingEvent.timeZone,
               },
               recurrence: pendingEvent.recurrence,
+              attendees: pendingEvent.attendees,
+              reminders: pendingEvent.reminders
+                ? {
+                    useDefault: false,
+                    overrides: pendingEvent.reminders.map((r) => ({
+                      minutes: r.minutesBeforeStart,
+                      method: r.method || "popup",
+                    })),
+                  }
+                : undefined,
+              colorId: pendingEvent.colorId,
+              transparency: pendingEvent.transparency,
+              visibility: pendingEvent.visibility,
             },
             pendingEvent.calendarId || "primary"
           ).then((event) => ({ pendingId: pendingEvent.id, event }))

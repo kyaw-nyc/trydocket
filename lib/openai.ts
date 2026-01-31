@@ -1,111 +1,247 @@
 import OpenAI from "openai";
 import type { ChatCompletionTool } from "openai/resources/chat/completions";
+import { DateTime } from "luxon";
 
+// ===== Constants & Types =====================================================
+
+const DEFAULT_TIMEZONE =
+  Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+
+const ISO_OUTPUT_OPTIONS = {
+  suppressMilliseconds: true,
+  includeOffset: true,
+} as const;
+
+const ISO_STRING_PATTERN =
+  /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2})(\.\d{1,3})?)?(Z|[+-]\d{2}:?\d{2})?$/;
+
+export type RoundingMode = "nearest" | "ceil";
+
+export interface RoundingOptions {
+  timeZone?: string;
+  mode?: RoundingMode;
+}
+
+// ===== OpenAI Client ========================================================
+
+if (!process.env.OPENAI_API_KEY) {
+  console.warn(
+    "OPENAI_API_KEY is not set. The OpenAI client will fail at runtime until the key is provided."
+  );
+}
+
+/**
+ * Shared OpenAI client for the calendar assistant.
+ * Uses the environment variable OPENAI_API_KEY. Configure baseURL separately if needed.
+ */
 export const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
+  apiKey: process.env.OPENAI_API_KEY ?? "",
 });
 
-export function getSystemPrompt(currentTime: string, userTimezone: string) {
-  return `You are Docket, an intelligent and friendly calendar assistant. You help users manage their Google Calendar efficiently and thoughtfully.
+// ===== Date/Time Utilities ===================================================
 
-## Your Personality
-- Be concise but warm and helpful
-- Use natural conversational language
-- Be proactive in suggesting improvements to scheduling
-- Show understanding of context and user intent
-
-## Current Context
-- Current date/time: ${currentTime}
-- User's timezone: ${userTimezone}
-
-## CRITICAL: Date Accuracy
-- ALWAYS double-check the date before creating events
-- "February 26th" means the 26th day of February (02-26), NOT February 3rd or any other date
-- "March 15th" means 03-15, "April 1st" means 04-01, etc.
-- When the user specifies a date like "Feb 26th" or "February 26", use EXACTLY that date
-- If unsure about a date, confirm with the user before proceeding
-- Pay close attention to ordinal numbers: 1st, 2nd, 3rd, 4th, 5th, ..., 26th, 27th, etc.
-
-## Core Capabilities
-
-### Listing Events
-Use list_events to show the user their schedule. Always interpret relative dates correctly:
-- "today" = current day
-- "tomorrow" = next day  
-- "this week" = current week
-- "next Monday" = the upcoming Monday
-
-### Creating Events (IMPORTANT!)
-When the user wants to create/add/schedule an event:
-1. FIRST, use list_events to check for existing events during the proposed time slot
-2. If there are conflicts, inform the user about them BEFORE proposing the event
-3. Use the propose_event tool (NOT create_event directly) to show the event as a preview
-4. The user must click "Confirm" before it's added to Google Calendar
-5. Always round times to the nearest 5-minute mark for cleaner scheduling:
-   - 7:43 → 7:45
-   - 2:17 → 2:15
-   - 9:08 → 9:10
-   - 11:01 → 11:00
-
-When a user says something like "Put 1 hour of reading", infer the start time as NOW (rounded to nearest 5 min) and calculate the end time based on duration.
-
-### Conflict Detection (CRITICAL!)
-Before proposing any event, ALWAYS check for conflicts:
-1. Use list_events with timeMin and timeMax set to the proposed event's start and end times
-2. If any events overlap with the proposed time, inform the user clearly:
-   - "I notice you already have '[Event Name]' scheduled from [time] to [time] during this time slot."
-   - "Would you like to proceed anyway, or would you prefer a different time?"
-3. Still propose the event so they can see it on the calendar, but make sure they're aware of the conflict in your response
-
-### Recurring Events (VERY IMPORTANT!)
-If the user asks for repeating events (e.g. "every day", "weekdays", "every Monday", "repeat for 2 weeks", "until next week"), DO NOT create many separate events.
-Instead, create ONE event with a recurrence rule using the propose_event tool's recurrence field (Google Calendar RRULE format).
-
-Examples:
-- Every day: ["RRULE:FREQ=DAILY"]
-- Weekdays: ["RRULE:FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR"]
-- Every day until Feb 5, 2026 (inclusive-ish): ["RRULE:FREQ=DAILY;UNTIL=20260206T000000Z"] (use the user's timezone context)
-
-If the user says "for this week till next week" or similar, interpret it as a bounded recurrence (add an UNTIL) rather than making many single events.
-
-### Updating Events
-Use list_events first to find the event ID, then use update_event to modify it.
-
-### Deleting Events (IMPORTANT!)
-When the user wants to delete an event:
-1. FIRST use list_events to find the event ID
-2. Use propose_delete_event (NOT delete_event directly) to show the deletion as a preview
-3. The user must click "Confirm Delete" before it's actually removed from Google Calendar
-4. This prevents accidental deletions
-
-### Canceling Proposed Events
-If the user wants to cancel, remove, or discard a proposed event that they haven't confirmed yet (one that's showing as a preview), use cancel_pending_events. This clears all pending event previews from the calendar.
-Examples of when to use this:
-- "Cancel that"
-- "Never mind"
-- "Don't add that event"
-- "Remove the preview"
-- "I changed my mind"
-
-## Response Guidelines
-- When proposing events: Confirm what you're about to add and tell the user to check the calendar preview
-- When listing events: Summarize clearly with times and titles
-- For empty schedules: Be encouraging ("Your schedule is clear! Want to plan something?")
-- For errors: Apologize briefly and suggest alternatives
-
-## Example Interactions
-
-User: "Add a 30 minute workout tomorrow at 8am"
-→ Use propose_event with tomorrow's date at 8:00 AM, end at 8:30 AM
-
-User: "Schedule book reading for an hour"  
-→ Infer NOW as start time (rounded to nearest 5 min), add 1 hour for end time
-
-User: "What do I have today?"
-→ Use list_events for today's date range
-
-Remember: NEVER use create_event directly. Always use propose_event so users can preview and confirm.`;
+/**
+ * Cheap sanity check for ISO-8601 strings before deeper parsing.
+ */
+export function isValidIsoString(value: string): boolean {
+  if (typeof value !== "string" || !ISO_STRING_PATTERN.test(value)) return false;
+  const dt = DateTime.fromISO(value, { setZone: true });
+  return dt.isValid;
 }
+
+/**
+ * Throws when the provided value is not a valid ISO-8601 string.
+ */
+export function assertIsoString(value: string, label = "date/time"): string {
+  if (!isValidIsoString(value)) {
+    throw new Error(`Invalid ISO ${label}: "${value}"`);
+  }
+  return value;
+}
+
+function resolveTimeZone(isoString: string, explicit?: string): string {
+  if (explicit) return explicit;
+  const fromIso = DateTime.fromISO(isoString, { setZone: true });
+  if (fromIso.isValid && fromIso.zone?.isValid) return fromIso.zoneName;
+  return DEFAULT_TIMEZONE;
+}
+
+/**
+ * Parse an ISO string into a Luxon DateTime in the desired zone.
+ * - If a zone is provided, interpret the wall-clock time in that zone (ignores any offset in the string).
+ * - Otherwise respect the offset/zone encoded in the string; fallback to DEFAULT_TIMEZONE.
+ */
+export function parseIsoToDateTime(
+  isoString: string,
+  timeZone?: string
+): DateTime {
+  assertIsoString(isoString);
+  const zone = resolveTimeZone(isoString, timeZone);
+
+  // When a zone is supplied we interpret the wall time in that zone; otherwise keep the zone from the ISO string.
+  const dt = DateTime.fromISO(isoString, {
+    zone,
+    setZone: timeZone ? false : true,
+  });
+
+  if (!dt.isValid) {
+    throw new Error(
+      `Unable to parse date/time "${isoString}" in zone "${zone}": ${dt.invalidReason ?? "unknown error"}`
+    );
+  }
+
+  return dt;
+}
+
+/**
+ * Format a DateTime or ISO string as ISO-8601 in the specified zone (defaults to the value's zone).
+ */
+export function formatIsoInTimeZone(
+  value: string | DateTime,
+  timeZone?: string
+): string {
+  const dt =
+    typeof value === "string"
+      ? parseIsoToDateTime(value, timeZone)
+      : value.setZone(resolveTimeZone(value.toISO() ?? "", timeZone));
+
+  const iso = dt.toISO(ISO_OUTPUT_OPTIONS);
+  if (!iso) throw new Error("Failed to format ISO date/time");
+  return iso;
+}
+
+function roundDateTimeToInterval(
+  dt: DateTime,
+  intervalMinutes: number,
+  mode: RoundingMode
+): DateTime {
+  const remainder = dt.minute % intervalMinutes;
+  const hasSubMinute = dt.second !== 0 || dt.millisecond !== 0;
+  const base = dt.set({ second: 0, millisecond: 0 });
+
+  if (remainder === 0 && !hasSubMinute) return base;
+
+  if (mode === "ceil") {
+    const delta = remainder === 0 ? intervalMinutes : intervalMinutes - remainder;
+    return base.plus({ minutes: delta });
+  }
+
+  // Nearest: ties (2.5 min) round up
+  const halfway = intervalMinutes / 2;
+  const delta = remainder < halfway ? -remainder : intervalMinutes - remainder;
+  return base.plus({ minutes: delta });
+}
+
+/**
+ * Round to the nearest 5-minute mark in the provided timezone (default: inferred from the ISO string or system).
+ * Handles minute overflow, day rollover, and DST transitions via Luxon.
+ */
+export function roundToNearest5Minutes(
+  isoString: string,
+  timeZone?: string
+): string {
+  const dt = parseIsoToDateTime(isoString, timeZone);
+  const rounded = roundDateTimeToInterval(dt, 5, "nearest");
+  return formatIsoInTimeZone(rounded, dt.zoneName);
+}
+
+/**
+ * Round up to the next 5-minute boundary (ceiling) in the provided timezone.
+ */
+export function roundUpToNext5Minutes(
+  isoString: string,
+  timeZone?: string
+): string {
+  const dt = parseIsoToDateTime(isoString, timeZone);
+  const rounded = roundDateTimeToInterval(dt, 5, "ceil");
+  return formatIsoInTimeZone(rounded, dt.zoneName);
+}
+
+// ===== System Prompt Construction ===========================================
+
+const INTRO =
+  "You are Docket, an intelligent and friendly calendar assistant. You help users manage their Google Calendar efficiently and thoughtfully.";
+
+const PERSONALITY = `## Personality
+- Be concise, warm, and pragmatic
+- Use natural conversational language
+- Be proactive in spotting scheduling improvements
+- Show empathy for intent and constraints`; 
+
+const DATE_ACCURACY = `## CRITICAL: Date Accuracy
+- ALWAYS double-check dates before proposing events
+- Respect exact dates: "February 26th" = 02-26, not another day
+- Treat ordinals carefully (1st, 2nd, 3rd, ... 31st)
+- Never fabricate or guess event IDs; obtain them via list_events`;
+
+const AMBIGUITY_RULES = `## Date & Time Interpretation
+- Missing timezone: default to the user's timezone; state this assumption
+- Missing year: use current year; if that date already passed in the user's timezone, move to next year
+- Missing am/pm with 1-12 hour times: ask a clarifying question instead of guessing
+- "next Monday" = Monday of the following calendar week
+- "this Monday" = the Monday of the current week (if today is Monday, that's today)
+- "this weekend" = the upcoming Saturday and Sunday in the user's timezone
+- "in X hours/minutes" = add duration from now in the user's timezone
+- "end of day" default 5:00 PM in the user's timezone unless context suggests otherwise; confirm if uncertain
+- Default duration when missing: 30 minutes (user may override)
+- All-day events: use date-only start, end = next day per RFC 5545; no times
+- Multi-day timed events: ensure end is after start and spans days explicitly
+- If ambiguity remains (date, timezone, or duration), ask one concise clarifying question before calling tools`;
+
+const DEFAULTS_AND_ROUNDING = `## Defaults & Rounding
+- Use the user's timezone for all parsing, rounding, and formatting
+- Round scheduled times to the nearest 5 minutes
+- When user says "start now" or provides only a duration, round UP to the next 5-minute mark so the event doesn't start in the past
+- Handle overflow correctly (e.g., 23:59 -> 00:00 next day) and DST transitions`;
+
+const DECISION_POLICY = `## Decision Policy (follow in order)
+1) Determine intent: if the user only asks a question/brainstorming, DO NOT call calendar tools—answer directly.
+2) If time/date info is missing or ambiguous, ask a clarifying question before any tool calls.
+3) When creating events: a) compute the exact start/end; b) run list_events for that window to check conflicts; c) inform the user about conflicts; d) call propose_event (never create_event) so they can confirm.
+4) Recurring events: prefer a single event with RRULE using propose_event.recurrence; bound with UNTIL when the user sets an end.
+5) Updating events: call list_events to find the correct event ID, then call update_event.
+6) Deleting events: call list_events to get the ID, then call propose_delete_event. Only call delete_event if the user explicitly skips confirmation.
+7) Cancel previews: if the user cancels/changes their mind before confirmation, call cancel_pending_events.
+8) Avoid unnecessary list_events calls (e.g., when only clarifying or answering general questions).`;
+
+const TOOL_GUIDANCE = `## Tool Usage
+- Always include timeZone when proposing or updating events
+- Include recurrence for repeats (e.g., weekdays -> RRULE:FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR)
+- Surface conflicts clearly: "You already have [title] from [time] to [time]. Proceed or choose another time?"
+- Never guess event IDs; list_events first to retrieve them
+- Do not use create_event directly—use propose_event so the user can confirm`;
+
+const RESPONSE_GUIDELINES = `## Response Guidelines
+- When proposing: summarize what will be added and remind the user to confirm the preview
+- When listing: present times and titles clearly, in the user's timezone
+- If schedule is empty: encourage planning ("You're clear—want to add something?")
+- On errors: apologize briefly and suggest a safe alternative
+- Keep replies concise and actionable`;
+
+const EXAMPLES = `## Example Interactions
+- User: "Add a 30 minute workout tomorrow at 8am" → propose_event for tomorrow 08:00-08:30 after conflict check
+- User: "Schedule book reading for an hour" → start at now rounded up to next 5 minutes; end +1h; propose_event
+- User: "What do I have today?" → list_events for today's range in user's timezone`;
+
+/**
+ * Build the system prompt with strong calendar safety guardrails.
+ */
+export function getSystemPrompt(currentTime: string, userTimezone: string) {
+  return [
+    INTRO,
+    PERSONALITY,
+    `## Current Context\n- Current date/time: ${currentTime}\n- User's timezone: ${userTimezone}\n- Use this timezone for all interpretations and formatting.`,
+    DATE_ACCURACY,
+    AMBIGUITY_RULES,
+    DEFAULTS_AND_ROUNDING,
+    DECISION_POLICY,
+    TOOL_GUIDANCE,
+    RESPONSE_GUIDELINES,
+    EXAMPLES,
+  ].join("\n\n");
+}
+
+// ===== Tool Schemas =========================================================
 
 export const calendarTools: ChatCompletionTool[] = [
   {
@@ -113,17 +249,28 @@ export const calendarTools: ChatCompletionTool[] = [
     function: {
       name: "list_events",
       description:
-        "List calendar events within a time range. Defaults to the next 7 days if no range specified. Use this to show users their schedule or to find event IDs for updates/deletions.",
+        "List calendar events within a time range. Use this to show the schedule or find event IDs before updates/deletions.",
       parameters: {
         type: "object",
         properties: {
           timeMin: {
             type: "string",
-            description: "Start of time range in ISO 8601 format (e.g., 2024-01-15T00:00:00Z)",
+            description:
+              "Start of time range in ISO 8601 format (e.g., 2024-01-15T00:00:00-05:00).",
           },
           timeMax: {
             type: "string",
-            description: "End of time range in ISO 8601 format (e.g., 2024-01-15T23:59:59Z)",
+            description:
+              "End of time range in ISO 8601 format (e.g., 2024-01-15T23:59:59-05:00).",
+          },
+          calendarId: {
+            type: "string",
+            description: "Optional calendar ID; defaults to primary if omitted.",
+          },
+          query: {
+            type: "string",
+            description:
+              "Optional free-text search query to filter events by title/description (server may ignore if unsupported).",
           },
         },
         required: [],
@@ -135,39 +282,80 @@ export const calendarTools: ChatCompletionTool[] = [
     function: {
       name: "propose_event",
       description:
-        "Propose a new calendar event that will be shown as a preview on the user's calendar. The user must confirm before it's actually added to Google Calendar. ALWAYS use this instead of create_event to prevent accidental calendar modifications.",
+        "Propose a new calendar event as a preview. The user must confirm before it's added to Google Calendar. ALWAYS use this instead of create_event.",
       parameters: {
         type: "object",
         properties: {
           summary: {
             type: "string",
-            description: "Title of the event (e.g., 'Book Reading', 'Team Meeting')",
+            description: "Title of the event (e.g., 'Book Reading', 'Team Meeting').",
           },
           description: {
             type: "string",
-            description: "Optional description or notes for the event",
+            description: "Optional description or notes for the event.",
           },
           location: {
             type: "string",
-            description: "Optional location of the event",
+            description: "Optional location of the event.",
           },
           startDateTime: {
             type: "string",
-            description: "Start date/time in ISO 8601 format. Round to nearest 5 minutes (e.g., 7:43 → 7:45)",
+            description:
+              "Start date/time in ISO 8601 format. Round to the nearest 5 minutes in the user's timezone.",
           },
           endDateTime: {
             type: "string",
-            description: "End date/time in ISO 8601 format. Round to nearest 5 minutes.",
+            description:
+              "End date/time in ISO 8601 format. Round to the nearest 5 minutes in the user's timezone.",
           },
           timeZone: {
             type: "string",
-            description: "IANA timezone (e.g., America/New_York, America/Los_Angeles, UTC). Use the user's timezone.",
+            description:
+              "IANA timezone (e.g., America/New_York). Always include to avoid ambiguity.",
           },
           recurrence: {
             type: "array",
             items: { type: "string" },
             description:
-              "Optional Google Calendar recurrence rules (RRULE), e.g. ['RRULE:FREQ=DAILY;COUNT=10'] or ['RRULE:FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR;UNTIL=20260206T000000Z']. Use this for repeating events instead of creating many separate events.",
+              "Optional Google Calendar RRULE strings, e.g., ['RRULE:FREQ=DAILY'] or ['RRULE:FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR;UNTIL=20260206T000000Z'].",
+          },
+          attendees: {
+            type: "array",
+            description: "Optional attendee list.",
+            items: {
+              type: "object",
+              properties: {
+                email: { type: "string" },
+                displayName: { type: "string" },
+                optional: { type: "boolean" },
+              },
+              required: ["email"],
+            },
+          },
+          reminders: {
+            type: "array",
+            description:
+              "Optional reminders. Each item is minutes before start with an optional delivery method (default popup).",
+            items: {
+              type: "object",
+              properties: {
+                minutesBeforeStart: { type: "number" },
+                method: { type: "string", description: "email | popup" },
+              },
+              required: ["minutesBeforeStart"],
+            },
+          },
+          colorId: {
+            type: "string",
+            description: "Optional Google Calendar colorId.",
+          },
+          transparency: {
+            type: "string",
+            description: "opaque | transparent (transparent keeps the time free).",
+          },
+          visibility: {
+            type: "string",
+            description: "default | public | private.",
           },
         },
         required: ["summary", "startDateTime", "endDateTime", "timeZone"],
@@ -179,37 +367,79 @@ export const calendarTools: ChatCompletionTool[] = [
     function: {
       name: "update_event",
       description:
-        "Update an existing calendar event. First use list_events to find the event ID.",
+        "Update an existing calendar event. Always find the event ID with list_events first.",
       parameters: {
         type: "object",
         properties: {
           eventId: {
             type: "string",
-            description: "The ID of the event to update (get this from list_events)",
+            description: "The ID of the event to update (from list_events).",
           },
           summary: {
             type: "string",
-            description: "New title for the event",
+            description: "New title for the event.",
           },
           description: {
             type: "string",
-            description: "New description for the event",
+            description: "New description for the event.",
           },
           location: {
             type: "string",
-            description: "New location for the event",
+            description: "New location for the event.",
           },
           startDateTime: {
             type: "string",
-            description: "New start date/time in ISO 8601 format",
+            description: "New start date/time in ISO 8601 format (round to nearest 5 minutes).",
           },
           endDateTime: {
             type: "string",
-            description: "New end date/time in ISO 8601 format",
+            description: "New end date/time in ISO 8601 format (round to nearest 5 minutes).",
           },
           timeZone: {
             type: "string",
-            description: "IANA timezone",
+            description: "IANA timezone for the updated times.",
+          },
+          recurrence: {
+            type: "array",
+            items: { type: "string" },
+            description: "Optional updated recurrence rules.",
+          },
+          attendees: {
+            type: "array",
+            description: "Optional attendee updates.",
+            items: {
+              type: "object",
+              properties: {
+                email: { type: "string" },
+                displayName: { type: "string" },
+                optional: { type: "boolean" },
+              },
+              required: ["email"],
+            },
+          },
+          reminders: {
+            type: "array",
+            description: "Optional reminders.",
+            items: {
+              type: "object",
+              properties: {
+                minutesBeforeStart: { type: "number" },
+                method: { type: "string" },
+              },
+              required: ["minutesBeforeStart"],
+            },
+          },
+          colorId: {
+            type: "string",
+            description: "Optional Google Calendar colorId.",
+          },
+          transparency: {
+            type: "string",
+            description: "opaque | transparent (transparent keeps the time free).",
+          },
+          visibility: {
+            type: "string",
+            description: "default | public | private.",
           },
         },
         required: ["eventId"],
@@ -221,29 +451,29 @@ export const calendarTools: ChatCompletionTool[] = [
     function: {
       name: "propose_delete_event",
       description:
-        "Propose deletion of a calendar event. The event will be highlighted on the calendar and the user must confirm before it's actually deleted. ALWAYS use this instead of delete_event to prevent accidental deletions.",
+        "Propose deletion of a calendar event. User must confirm before it is deleted.",
       parameters: {
         type: "object",
         properties: {
           eventId: {
             type: "string",
-            description: "The ID of the event to delete (get this from list_events)",
+            description: "The ID of the event to delete (from list_events).",
           },
           summary: {
             type: "string",
-            description: "The title/summary of the event (for display purposes)",
+            description: "Title/summary of the event (for display).",
           },
           startDateTime: {
             type: "string",
-            description: "Start date/time of the event in ISO 8601 format",
+            description: "Start date/time of the event in ISO 8601 format.",
           },
           endDateTime: {
             type: "string",
-            description: "End date/time of the event in ISO 8601 format",
+            description: "End date/time of the event in ISO 8601 format.",
           },
           calendarId: {
             type: "string",
-            description: "Optional calendar ID if the event is not on the primary calendar",
+            description: "Optional calendar ID if not on primary.",
           },
         },
         required: ["eventId", "summary", "startDateTime", "endDateTime"],
@@ -255,13 +485,13 @@ export const calendarTools: ChatCompletionTool[] = [
     function: {
       name: "delete_event",
       description:
-        "Directly delete a calendar event WITHOUT confirmation. Only use this if the user explicitly asks to skip confirmation. Prefer propose_delete_event for safety.",
+        "Directly delete a calendar event WITHOUT confirmation. Only use if the user explicitly asks to skip confirmation.",
       parameters: {
         type: "object",
         properties: {
           eventId: {
             type: "string",
-            description: "The ID of the event to delete",
+            description: "The ID of the event to delete.",
           },
         },
         required: ["eventId"],
@@ -273,7 +503,7 @@ export const calendarTools: ChatCompletionTool[] = [
     function: {
       name: "cancel_pending_events",
       description:
-        "Cancel/remove all pending event proposals that are showing as previews on the calendar. Use this when the user wants to discard proposed events they haven't confirmed yet (e.g., 'cancel that', 'never mind', 'don't add that').",
+        "Cancel/remove all pending event proposals that are showing as previews on the calendar.",
       parameters: {
         type: "object",
         properties: {},
@@ -282,20 +512,3 @@ export const calendarTools: ChatCompletionTool[] = [
     },
   },
 ];
-
-// Helper function to round time to nearest 5 minutes
-export function roundToNearest5Minutes(isoString: string): string {
-  const date = new Date(isoString);
-  const minutes = date.getMinutes();
-  const remainder = minutes % 5;
-  
-  if (remainder === 0) return date.toISOString();
-  
-  // Round to nearest 5
-  const roundedMinutes = remainder < 3 ? minutes - remainder : minutes + (5 - remainder);
-  date.setMinutes(roundedMinutes);
-  date.setSeconds(0);
-  date.setMilliseconds(0);
-  
-  return date.toISOString();
-}

@@ -10,7 +10,8 @@ export async function listEvents(
   accessToken: string,
   timeMin?: string,
   timeMax?: string,
-  calendarId = "primary"
+  calendarId = "primary",
+  query?: string
 ) {
   const calendar = getCalendar(accessToken);
   const res = await calendar.events.list({
@@ -19,6 +20,7 @@ export async function listEvents(
     timeMax:
       timeMax ||
       new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+    q: query,
     singleEvents: true,
     orderBy: "startTime",
     maxResults: 100,
@@ -62,6 +64,14 @@ export async function createEvent(
     start: { dateTime: string; timeZone?: string };
     end: { dateTime: string; timeZone?: string };
     recurrence?: string[];
+    attendees?: Array<{ email: string; displayName?: string; optional?: boolean }>;
+    reminders?: {
+      useDefault?: boolean;
+      overrides?: Array<{ method?: string; minutes?: number }>;
+    };
+    colorId?: string;
+    transparency?: "opaque" | "transparent";
+    visibility?: "default" | "public" | "private";
   },
   calendarId = "primary"
 ) {
@@ -83,6 +93,13 @@ export async function updateEvent(
     colorId?: string;
     start?: { dateTime: string; timeZone?: string };
     end?: { dateTime: string; timeZone?: string };
+    attendees?: Array<{ email: string; displayName?: string; optional?: boolean }>;
+    reminders?: {
+      useDefault?: boolean;
+      overrides?: Array<{ method?: string; minutes?: number }>;
+    };
+    transparency?: "opaque" | "transparent";
+    visibility?: "default" | "public" | "private";
   }
 ) {
   const calendar = getCalendar(accessToken);
