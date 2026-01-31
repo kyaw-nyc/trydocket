@@ -18,6 +18,14 @@ export function getSystemPrompt(currentTime: string, userTimezone: string) {
 - Current date/time: ${currentTime}
 - User's timezone: ${userTimezone}
 
+## CRITICAL: Date Accuracy
+- ALWAYS double-check the date before creating events
+- "February 26th" means the 26th day of February (02-26), NOT February 3rd or any other date
+- "March 15th" means 03-15, "April 1st" means 04-01, etc.
+- When the user specifies a date like "Feb 26th" or "February 26", use EXACTLY that date
+- If unsure about a date, confirm with the user before proceeding
+- Pay close attention to ordinal numbers: 1st, 2nd, 3rd, 4th, 5th, ..., 26th, 27th, etc.
+
 ## Core Capabilities
 
 ### Listing Events
@@ -63,8 +71,12 @@ If the user says "for this week till next week" or similar, interpret it as a bo
 ### Updating Events
 Use list_events first to find the event ID, then use update_event to modify it.
 
-### Deleting Events
-Use list_events first to find the event ID, then use delete_event to remove it.
+### Deleting Events (IMPORTANT!)
+When the user wants to delete an event:
+1. FIRST use list_events to find the event ID
+2. Use propose_delete_event (NOT delete_event directly) to show the deletion as a preview
+3. The user must click "Confirm Delete" before it's actually removed from Google Calendar
+4. This prevents accidental deletions
 
 ### Canceling Proposed Events
 If the user wants to cancel, remove, or discard a proposed event that they haven't confirmed yet (one that's showing as a preview), use cancel_pending_events. This clears all pending event previews from the calendar.
@@ -207,9 +219,43 @@ export const calendarTools: ChatCompletionTool[] = [
   {
     type: "function",
     function: {
+      name: "propose_delete_event",
+      description:
+        "Propose deletion of a calendar event. The event will be highlighted on the calendar and the user must confirm before it's actually deleted. ALWAYS use this instead of delete_event to prevent accidental deletions.",
+      parameters: {
+        type: "object",
+        properties: {
+          eventId: {
+            type: "string",
+            description: "The ID of the event to delete (get this from list_events)",
+          },
+          summary: {
+            type: "string",
+            description: "The title/summary of the event (for display purposes)",
+          },
+          startDateTime: {
+            type: "string",
+            description: "Start date/time of the event in ISO 8601 format",
+          },
+          endDateTime: {
+            type: "string",
+            description: "End date/time of the event in ISO 8601 format",
+          },
+          calendarId: {
+            type: "string",
+            description: "Optional calendar ID if the event is not on the primary calendar",
+          },
+        },
+        required: ["eventId", "summary", "startDateTime", "endDateTime"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
       name: "delete_event",
       description:
-        "Delete a calendar event. First use list_events to find the event ID.",
+        "Directly delete a calendar event WITHOUT confirmation. Only use this if the user explicitly asks to skip confirmation. Prefer propose_delete_event for safety.",
       parameters: {
         type: "object",
         properties: {

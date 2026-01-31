@@ -30,8 +30,9 @@ export function getEventPosition(
     durationMinutes = (end.getTime() - start.getTime()) / (1000 * 60);
   }
 
-  // Minimum height to avoid text clipping (title + time + optional location)
-  const height = Math.max((durationMinutes / 60) * HOUR_HEIGHT, 56);
+  // Minimum height for readability - small enough to fit in gaps but readable
+  // 18px minimum allows title to show; EventCard handles hiding time/location for short events
+  const height = Math.max((durationMinutes / 60) * HOUR_HEIGHT, 18);
   return { top, height };
 }
 

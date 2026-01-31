@@ -43,7 +43,7 @@ export async function GET(req: NextRequest) {
     );
     const events = eventsArrays.flat();
 
-    return NextResponse.json({
+    const response = NextResponse.json({
       events,
       colors: colors.event, // Event color palette
       calendarColors: colors.calendar, // Calendar color palette
@@ -51,6 +51,14 @@ export async function GET(req: NextRequest) {
       defaultColorId: calendarMeta.backgroundColor ? undefined : calendarMeta.colorId,
       defaultColor: calendarMeta.backgroundColor || null,
     });
+
+    // Cache for 10 seconds on client, allow stale-while-revalidate for 30s
+    response.headers.set(
+      "Cache-Control",
+      "private, max-age=10, stale-while-revalidate=30"
+    );
+
+    return response;
   } catch (error) {
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "Failed to list events" },
@@ -82,14 +90,11 @@ export async function POST(req: NextRequest) {
   const body = await req.json();
 
   try {
-    // Handle batch creation from pending events
+    // Handle batch creation from pending events - create all in parallel for speed
     if (body.events && Array.isArray(body.events)) {
-      const createdEvents = [];
-      const errors = [];
-
-      for (const pendingEvent of body.events as PendingEvent[]) {
-        try {
-          const event = await createEvent(
+      const results = await Promise.allSettled(
+        (body.events as PendingEvent[]).map((pendingEvent) =>
+          createEvent(
             accessToken,
             {
               summary: pendingEvent.summary,
@@ -106,12 +111,19 @@ export async function POST(req: NextRequest) {
               recurrence: pendingEvent.recurrence,
             },
             pendingEvent.calendarId || "primary"
-          );
-          createdEvents.push(event);
-        } catch (err) {
+          ).then((event) => ({ pendingId: pendingEvent.id, event }))
+        )
+      );
+
+      const createdEvents: unknown[] = [];
+      const errors: { error: string }[] = [];
+
+      for (const result of results) {
+        if (result.status === "fulfilled") {
+          createdEvents.push(result.value.event);
+        } else {
           errors.push({
-            pendingId: pendingEvent.id,
-            error: err instanceof Error ? err.message : "Failed to create event",
+            error: result.reason instanceof Error ? result.reason.message : "Failed to create event",
           });
         }
       }

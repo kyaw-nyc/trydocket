@@ -150,3 +150,8 @@
   --calendar-today-bg: oklch(0.488 0.243 264.376 / 0.08);
   --calendar-week-highlight: oklch(0.488 0.243 264.376 / 0.15);
 }
+
+/* Event card hover effect using CSS instead of JS state */
+.event-card-hover:hover {
+  background-color: var(--event-hover-bg) !important;
+}

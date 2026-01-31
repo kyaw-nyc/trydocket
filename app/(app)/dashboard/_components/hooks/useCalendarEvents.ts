@@ -10,7 +10,7 @@ import {
   CalendarLegendEntry,
   STORAGE_KEY,
 } from "../types/calendar";
-import { useCalendar, PendingEvent } from "../CalendarContext";
+import { useCalendar, PendingEvent, PendingDeletion } from "../CalendarContext";
 import { isSameDay, getWeekKey } from "../utils/date-utils";
 import { expandRecurrence } from "../utils/recurrence-utils";
 
@@ -20,24 +20,40 @@ type UseCalendarEventsOptions = {
   prefetchWeeks?: number;
 };
 
-const DEFAULT_AUTO_REFRESH_INTERVAL = 30000;
+const DEFAULT_AUTO_REFRESH_INTERVAL = 60000; // Increased to 60s to reduce API calls
 const DEFAULT_PREFETCH_WEEKS = 4;
+
+// Batch all calendar data into single state object to reduce re-renders
+type CalendarData = {
+  events: CalendarEvent[];
+  colors: ColorsMap;
+  calendarColors: ColorsMap;
+  calendars: UserCalendar[];
+  defaultColor: string | null;
+};
+
+const INITIAL_DATA: CalendarData = {
+  events: [],
+  colors: {},
+  calendarColors: {},
+  calendars: [],
+  defaultColor: null,
+};
 
 export function useCalendarEvents({
   weekDates,
   autoRefreshInterval = DEFAULT_AUTO_REFRESH_INTERVAL,
   prefetchWeeks = DEFAULT_PREFETCH_WEEKS,
 }: UseCalendarEventsOptions) {
-  const { refreshKey, pendingEvents } = useCalendar();
+  const { refreshKey, pendingEvents, pendingDeletions } = useCalendar();
 
-  // Core state
-  const [events, setEvents] = useState<CalendarEvent[]>([]);
-  const [colors, setColors] = useState<ColorsMap>({});
-  const [calendarColors, setCalendarColors] = useState<ColorsMap>({});
-  const [calendars, setCalendars] = useState<UserCalendar[]>([]);
+  // Batched state - single update instead of 5 separate ones
+  const [data, setData] = useState<CalendarData>(INITIAL_DATA);
   const [selectedCalendarIds, setSelectedCalendarIds] = useState<string[]>([]);
-  const [defaultColor, setDefaultColor] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+
+  // Destructure for convenience
+  const { events, colors, calendarColors, calendars, defaultColor } = data;
 
   // For triggering manual refreshes
   const [localRefreshKey, setLocalRefreshKey] = useState(0);
@@ -70,23 +86,29 @@ export function useCalendarEvents({
       const controller = new AbortController();
       fetchControllerRef.current = controller;
 
+      // Use cache-busting for manual refreshes (after create/delete actions)
+      const cacheBuster = refreshKey > 0 || localRefreshKey > 0 ? `&_t=${Date.now()}` : "";
+
       try {
         // PHASE 1: Quickly fetch just the current week first
         if (!hasLoadedCurrentWeekRef.current) {
           const quickRes = await fetch(
-            `/api/calendar/events?timeMin=${currentWeekStart.toISOString()}&timeMax=${currentWeekEnd.toISOString()}`,
-            { signal: controller.signal }
+            `/api/calendar/events?timeMin=${currentWeekStart.toISOString()}&timeMax=${currentWeekEnd.toISOString()}${cacheBuster}`,
+            { signal: controller.signal, cache: cacheBuster ? "no-store" : "default" }
           );
 
           if (currentFetchId !== fetchIdRef.current) return;
 
           if (quickRes.ok) {
             const quickData = await quickRes.json();
-            setEvents(quickData.events || []);
-            setColors(quickData.colors || {});
-            setCalendarColors(quickData.calendarColors || {});
-            setCalendars(quickData.calendars || []);
-            setDefaultColor(quickData.defaultColor || null);
+            // Single batched state update instead of 5 separate ones
+            setData({
+              events: quickData.events || [],
+              colors: quickData.colors || {},
+              calendarColors: quickData.calendarColors || {},
+              calendars: quickData.calendars || [],
+              defaultColor: quickData.defaultColor || null,
+            });
             hasLoadedCurrentWeekRef.current = true;
             setLoading(false); // Show current week immediately
           }
@@ -99,19 +121,22 @@ export function useCalendarEvents({
         timeMax.setDate(timeMax.getDate() + prefetchWeeks * 7);
 
         const res = await fetch(
-          `/api/calendar/events?timeMin=${timeMin.toISOString()}&timeMax=${timeMax.toISOString()}`,
-          { signal: controller.signal }
+          `/api/calendar/events?timeMin=${timeMin.toISOString()}&timeMax=${timeMax.toISOString()}${cacheBuster}`,
+          { signal: controller.signal, cache: cacheBuster ? "no-store" : "default" }
         );
 
         if (currentFetchId !== fetchIdRef.current) return;
 
         if (res.ok) {
-          const data = await res.json();
-          setEvents(data.events || []);
-          setColors(data.colors || {});
-          setCalendarColors(data.calendarColors || {});
-          setCalendars(data.calendars || []);
-          setDefaultColor(data.defaultColor || null);
+          const fetchedData = await res.json();
+          // Single batched state update
+          setData({
+            events: fetchedData.events || [],
+            colors: fetchedData.colors || {},
+            calendarColors: fetchedData.calendarColors || {},
+            calendars: fetchedData.calendars || [],
+            defaultColor: fetchedData.defaultColor || null,
+          });
         }
       } catch (error) {
         if ((error as Error).name !== "AbortError") {
@@ -194,20 +219,29 @@ export function useCalendarEvents({
   }, [selectedCalendarIds]);
 
   // ============================================
-  // STEP 3: Auto-refresh when tab becomes visible
+  // STEP 3: Auto-refresh only when tab is visible
   // ============================================
+  const lastRefreshRef = useRef(Date.now());
+
   useEffect(() => {
     if (!autoRefreshInterval || autoRefreshInterval <= 0) return;
 
     let intervalId: NodeJS.Timeout | null = null;
 
-    const startAutoRefresh = () => {
-      if (intervalId) return;
-      intervalId = setInterval(() => {
-        if (document.visibilityState === "visible") {
+    const doRefresh = () => {
+      // Only refresh if visible AND enough time has passed (debounce)
+      if (document.visibilityState === "visible") {
+        const now = Date.now();
+        if (now - lastRefreshRef.current >= autoRefreshInterval) {
+          lastRefreshRef.current = now;
           setLocalRefreshKey((k) => k + 1);
         }
-      }, autoRefreshInterval);
+      }
+    };
+
+    const startAutoRefresh = () => {
+      if (intervalId) return;
+      intervalId = setInterval(doRefresh, autoRefreshInterval);
     };
 
     const stopAutoRefresh = () => {
@@ -219,13 +253,15 @@ export function useCalendarEvents({
 
     const handleVisibilityChange = () => {
       if (document.visibilityState === "visible") {
-        setLocalRefreshKey((k) => k + 1);
+        // Refresh on tab return if stale
+        doRefresh();
         startAutoRefresh();
       } else {
         stopAutoRefresh();
       }
     };
 
+    // Only start if visible
     if (document.visibilityState === "visible") {
       startAutoRefresh();
     }
@@ -245,12 +281,37 @@ export function useCalendarEvents({
       // Nothing selected - show nothing (or could show all)
       return [];
     }
-    return events.filter((event) => {
-      // If event has no calendarId, include it (legacy support)
-      if (!event.calendarId) return true;
-      return selectedCalendarIds.includes(event.calendarId);
-    });
-  }, [events, selectedCalendarIds]);
+
+    // Track if we've already shown the delete banner (only show once)
+    let hasShownDeleteBanner = false;
+
+    return events
+      .filter((event) => {
+        // If event has no calendarId, include it (legacy support)
+        if (!event.calendarId) return true;
+        return selectedCalendarIds.includes(event.calendarId);
+      })
+      .map((event) => {
+        // Check if this event is pending deletion
+        const pendingDeletion = pendingDeletions.find(
+          (pd: PendingDeletion) => pd.eventId === event.id
+        );
+        if (pendingDeletion) {
+          // Only show the delete banner on the first event
+          const showDeleteBanner = !hasShownDeleteBanner;
+          if (showDeleteBanner) {
+            hasShownDeleteBanner = true;
+          }
+          return {
+            ...event,
+            isPendingDeletion: true,
+            showDeleteBanner,
+            pendingDeletionInfo: pendingDeletion,
+          };
+        }
+        return event;
+      });
+  }, [events, selectedCalendarIds, pendingDeletions]);
 
   // Pending events converted to calendar format with recurrence expansion
   const pendingCalendarEvents = useMemo<CalendarEvent[]>(() => {

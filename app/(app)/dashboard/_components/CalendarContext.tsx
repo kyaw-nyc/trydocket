@@ -16,6 +16,14 @@ export type PendingEvent = {
   calendarId?: string;
 };
 
+export type PendingDeletion = {
+  eventId: string;
+  calendarId?: string;
+  summary: string;
+  startDateTime: string;
+  endDateTime: string;
+};
+
 type GoToDateFn = (date: Date) => void;
 
 type CalendarContextType = {
@@ -29,6 +37,11 @@ type CalendarContextType = {
   clearPendingEvents: () => void;
   confirmPendingEvents: () => Promise<void>;
   isConfirming: boolean;
+  pendingDeletions: PendingDeletion[];
+  setPendingDeletions: (deletions: PendingDeletion[] | ((prev: PendingDeletion[]) => PendingDeletion[])) => void;
+  clearPendingDeletions: () => void;
+  confirmPendingDeletions: () => Promise<void>;
+  isDeleting: boolean;
   goToDate: GoToDateFn | null;
   setGoToDate: (fn: GoToDateFn) => void;
   scrollToTime: Date | null;
@@ -42,6 +55,8 @@ export function CalendarProvider({ children }: { children: ReactNode }) {
   const [theme, setThemeState] = useState<"light" | "dark">("light");
   const [pendingEvents, setPendingEvents] = useState<PendingEvent[]>([]);
   const [isConfirming, setIsConfirming] = useState(false);
+  const [pendingDeletions, setPendingDeletions] = useState<PendingDeletion[]>([]);
+  const [isDeleting, setIsDeleting] = useState(false);
   const [goToDateFn, setGoToDateFn] = useState<GoToDateFn | null>(null);
   const [scrollToTime, setScrollToTime] = useState<Date | null>(null);
 
@@ -85,7 +100,7 @@ export function CalendarProvider({ children }: { children: ReactNode }) {
 
   const confirmPendingEvents = useCallback(async () => {
     if (pendingEvents.length === 0) return;
-    
+
     setIsConfirming(true);
     try {
       const res = await fetch("/api/calendar/events", {
@@ -93,17 +108,41 @@ export function CalendarProvider({ children }: { children: ReactNode }) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ events: pendingEvents }),
       });
-      
+
       if (!res.ok) {
         throw new Error("Failed to create events");
       }
-      
+
       setPendingEvents([]);
       triggerRefresh();
     } finally {
       setIsConfirming(false);
     }
   }, [pendingEvents, triggerRefresh]);
+
+  const clearPendingDeletions = useCallback(() => {
+    setPendingDeletions([]);
+  }, []);
+
+  const confirmPendingDeletions = useCallback(async () => {
+    if (pendingDeletions.length === 0) return;
+
+    setIsDeleting(true);
+    try {
+      // Delete each event
+      for (const deletion of pendingDeletions) {
+        const query = deletion.calendarId ? `?calendarId=${deletion.calendarId}` : "";
+        await fetch(`/api/calendar/events/${deletion.eventId}${query}`, {
+          method: "DELETE",
+        });
+      }
+
+      setPendingDeletions([]);
+      triggerRefresh();
+    } finally {
+      setIsDeleting(false);
+    }
+  }, [pendingDeletions, triggerRefresh]);
 
   return (
     <CalendarContext.Provider
@@ -118,6 +157,11 @@ export function CalendarProvider({ children }: { children: ReactNode }) {
         clearPendingEvents,
         confirmPendingEvents,
         isConfirming,
+        pendingDeletions,
+        setPendingDeletions,
+        clearPendingDeletions,
+        confirmPendingDeletions,
+        isDeleting,
         goToDate: goToDateFn,
         setGoToDate,
         scrollToTime,

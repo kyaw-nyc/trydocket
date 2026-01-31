@@ -1,3 +1,11 @@
+export type PendingDeletionInfo = {
+  eventId: string;
+  calendarId?: string;
+  summary: string;
+  startDateTime: string;
+  endDateTime: string;
+};
+
 export type CalendarEvent = {
   id: string;
   summary?: string;
@@ -11,6 +19,9 @@ export type CalendarEvent = {
   isPending?: boolean;
   showConfirmBanner?: boolean; // Only show confirm UI on this event
   pendingGroupId?: string; // Links recurring instances together
+  isPendingDeletion?: boolean; // Event is marked for deletion
+  showDeleteBanner?: boolean; // Only show delete UI banner on this event
+  pendingDeletionInfo?: PendingDeletionInfo; // Deletion info
 };
 
 export type DetailedEvent = {

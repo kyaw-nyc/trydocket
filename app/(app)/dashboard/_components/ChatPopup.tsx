@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect, useCallback } from "react";
-import { useCalendar, PendingEvent } from "./CalendarContext";
+import { useCalendar, PendingEvent, PendingDeletion } from "./CalendarContext";
 import { cn } from "@/lib/utils";
 
 type Message = {
@@ -15,7 +15,7 @@ type ChatPopupProps = {
 };
 
 export default function ChatPopup({ sidebarOpen = false, isMobile = false }: ChatPopupProps) {
-  const { triggerRefresh, theme, setPendingEvents, clearPendingEvents, goToDate, setScrollToTime } = useCalendar();
+  const { triggerRefresh, theme, pendingEvents, setPendingEvents, clearPendingEvents, clearPendingDeletions, setPendingDeletions, goToDate, setScrollToTime } = useCalendar();
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
@@ -71,6 +71,9 @@ export default function ChatPopup({ sidebarOpen = false, isMobile = false }: Cha
         body: JSON.stringify({
           messages: updatedMessages,
           timezone: getUserTimezone(),
+          // Pass current pending events so AI knows what's actually pending vs confirmed
+          hasPendingEvents: pendingEvents.length > 0,
+          pendingEventSummaries: pendingEvents.map(e => e.summary),
         }),
         signal: controller.signal,
       });
@@ -84,6 +87,7 @@ export default function ChatPopup({ sidebarOpen = false, isMobile = false }: Cha
       // Check if AI wants to clear pending events (e.g., user said "cancel", "nevermind")
       if (data.clearPendingEvents === true) {
         clearPendingEvents();
+        clearPendingDeletions(); // Also clear any pending deletions
       }
 
       if (data.pendingEvents && Array.isArray(data.pendingEvents) && data.pendingEvents.length > 0) {
@@ -121,6 +125,39 @@ export default function ChatPopup({ sidebarOpen = false, isMobile = false }: Cha
         }
       }
 
+      // Handle pending deletions (similar to pending events)
+      if (data.pendingDeletions && Array.isArray(data.pendingDeletions) && data.pendingDeletions.length > 0) {
+        const validDeletions = data.pendingDeletions.filter((deletion: PendingDeletion) => {
+          if (!deletion.eventId || !deletion.startDateTime || !deletion.endDateTime) {
+            console.warn("Invalid pending deletion from API:", deletion);
+            return false;
+          }
+          return true;
+        });
+
+        if (validDeletions.length > 0) {
+          setPendingDeletions((prev: PendingDeletion[]) => [...prev, ...validDeletions]);
+
+          const eventDate = new Date(validDeletions[0].startDateTime);
+          const eventHour = eventDate.getHours();
+
+          // Auto-collapse chat if event is in the evening
+          if (eventHour >= 18) {
+            setTimeout(() => setIsExpanded(false), 300);
+          }
+
+          // Navigate to the event to be deleted
+          setTimeout(() => {
+            if (goToDate) {
+              goToDate(eventDate);
+            }
+            setTimeout(() => {
+              setScrollToTime(eventDate);
+            }, 150);
+          }, 50);
+        }
+      }
+
       // Handle empty or missing content
       const content = data.content || "I processed your request but don't have anything to say.";
       setMessages((prev) => [...prev, { role: "assistant", content }]);
@@ -136,7 +173,7 @@ export default function ChatPopup({ sidebarOpen = false, isMobile = false }: Cha
     } finally {
       setLoading(false);
     }
-  }, [input, loading, messages, setPendingEvents, clearPendingEvents, goToDate, setScrollToTime, triggerRefresh]);
+  }, [input, loading, messages, pendingEvents, setPendingEvents, clearPendingEvents, clearPendingDeletions, setPendingDeletions, goToDate, setScrollToTime, triggerRefresh]);
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && !e.shiftKey) {

@@ -6,6 +6,7 @@ import { isToday } from "../utils/date-utils";
 import { layoutDayEvents } from "../utils/layout-utils";
 import { EventCard } from "./EventCard";
 import { CurrentTimeLine } from "./CurrentTimeLine";
+import { TooltipProvider } from "@/components/ui/tooltip";
 
 type DayColumnProps = {
   date: Date;
@@ -50,16 +51,18 @@ function DayColumnComponent({
       {/* Current time line */}
       {showTimeLine && <CurrentTimeLine top={currentTimePos} />}
 
-      {/* Events */}
-      {laidOut.map((item) => (
-        <EventCard
-          key={item.event.id}
-          item={item}
-          colors={colors}
-          defaultColor={defaultColor}
-          onSelect={onSelectEvent}
-        />
-      ))}
+      {/* Events - single TooltipProvider for all events in this column */}
+      <TooltipProvider delayDuration={200}>
+        {laidOut.map((item) => (
+          <EventCard
+            key={item.event.id}
+            item={item}
+            colors={colors}
+            defaultColor={defaultColor}
+            onSelect={onSelectEvent}
+          />
+        ))}
+      </TooltipProvider>
     </div>
   );
 }

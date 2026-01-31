@@ -26,6 +26,14 @@ type PendingEventData = {
   recurrence?: string[];
 };
 
+type PendingDeletionData = {
+  eventId: string;
+  calendarId?: string;
+  summary: string;
+  startDateTime: string;
+  endDateTime: string;
+};
+
 type CalendarToolArgs = {
   timeMin?: string;
   timeMax?: string;
@@ -37,6 +45,7 @@ type CalendarToolArgs = {
   timeZone?: string;
   recurrence?: string[];
   eventId?: string;
+  calendarId?: string;
 };
 
 async function executeCalendarTool(
@@ -44,7 +53,7 @@ async function executeCalendarTool(
   // tool args vary per tool; keep flexible and validate per-case
   args: CalendarToolArgs,
   accessToken: string
-): Promise<{ result: string; pendingEvent?: PendingEventData; clearPendingEvents?: boolean }> {
+): Promise<{ result: string; pendingEvent?: PendingEventData; pendingDeletion?: PendingDeletionData; clearPendingEvents?: boolean }> {
   switch (name) {
     case "list_events": {
       const events = await listEvents(
@@ -152,6 +161,30 @@ async function executeCalendarTool(
       const event = await updateEvent(accessToken, args.eventId, updates);
       return { result: JSON.stringify(event) };
     }
+    case "propose_delete_event": {
+      if (!args.eventId) {
+        throw new Error("eventId is required for propose_delete_event");
+      }
+      if (!args.summary || !args.startDateTime || !args.endDateTime) {
+        throw new Error("summary, startDateTime, and endDateTime are required for propose_delete_event");
+      }
+
+      const pendingDeletion: PendingDeletionData = {
+        eventId: args.eventId,
+        calendarId: args.calendarId,
+        summary: args.summary,
+        startDateTime: args.startDateTime,
+        endDateTime: args.endDateTime,
+      };
+
+      return {
+        result: JSON.stringify({
+          success: true,
+          message: `Event "${args.summary}" has been marked for deletion and is now highlighted on the calendar. The user needs to click "Confirm Delete" to remove it from Google Calendar.`,
+        }),
+        pendingDeletion,
+      };
+    }
     case "delete_event": {
       if (!args.eventId) {
         throw new Error("eventId is required for delete_event");
@@ -180,9 +213,11 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const { messages, timezone } = (await req.json()) as {
+  const { messages, timezone, hasPendingEvents, pendingEventSummaries } = (await req.json()) as {
     messages: ChatCompletionMessageParam[];
     timezone?: string;
+    hasPendingEvents?: boolean;
+    pendingEventSummaries?: string[];
   };
 
   // Get current time formatted nicely
@@ -196,16 +231,39 @@ export async function POST(req: NextRequest) {
     minute: "2-digit",
     timeZoneName: "short",
   });
-  
+
   const userTimezone = timezone || getUserTimezone();
+
+  // Build pending events context for the AI - THIS IS CRITICAL FOR CORRECT BEHAVIOR
+  let pendingEventsContext = "";
+  if (hasPendingEvents && pendingEventSummaries && pendingEventSummaries.length > 0) {
+    pendingEventsContext = `\n\n## CRITICAL: Current Calendar State
+**PENDING PROPOSALS (not yet confirmed):**
+${pendingEventSummaries.map(s => `- "${s}"`).join("\n")}
+
+These events are still proposals. Use cancel_pending_events to remove them.`;
+  } else {
+    pendingEventsContext = `\n\n## CRITICAL: Current Calendar State
+**There are ZERO pending proposals on the calendar.**
+
+IMPORTANT: Even if the conversation history shows you proposed events earlier, those proposals have been CONFIRMED by the user and are now REAL calendar events. The user clicked "Confirm" so they are no longer proposals.
+
+- DO NOT use cancel_pending_events (there's nothing to cancel)
+- To delete events that were previously proposed and confirmed, you MUST:
+  1. First use list_events to find the event ID
+  2. Then use propose_delete_event with that event ID
+
+This is the CURRENT state - trust this over conversation history.`;
+  }
 
   // Build conversation with dynamic system prompt
   const conversationMessages: ChatCompletionMessageParam[] = [
-    { role: "system", content: getSystemPrompt(currentTime, userTimezone) },
+    { role: "system", content: getSystemPrompt(currentTime, userTimezone) + pendingEventsContext },
     ...messages,
   ];
 
   const pendingEvents: PendingEventData[] = [];
+  const pendingDeletions: PendingDeletionData[] = [];
   let shouldClearPendingEvents = false;
 
   // Function-calling loop: keep calling until we get a final text response
@@ -215,7 +273,7 @@ export async function POST(req: NextRequest) {
       model: "gpt-4o",
       messages: conversationMessages,
       tools: calendarTools,
-      temperature: 0.7,
+      temperature: 0.2, // Low temperature for precise date/time handling
     });
 
     const choice = response.choices[0];
@@ -230,6 +288,7 @@ export async function POST(req: NextRequest) {
         role: "assistant",
         content: message.content,
         pendingEvents: pendingEvents.length > 0 ? pendingEvents : undefined,
+        pendingDeletions: pendingDeletions.length > 0 ? pendingDeletions : undefined,
         clearPendingEvents: shouldClearPendingEvents || undefined,
       });
     }
@@ -239,7 +298,7 @@ export async function POST(req: NextRequest) {
       if (toolCall.type !== "function") continue;
 
       const args = JSON.parse(toolCall.function.arguments);
-      let toolResult: { result: string; pendingEvent?: PendingEventData; clearPendingEvents?: boolean };
+      let toolResult: { result: string; pendingEvent?: PendingEventData; pendingDeletion?: PendingDeletionData; clearPendingEvents?: boolean };
 
       try {
         toolResult = await executeCalendarTool(
@@ -251,6 +310,11 @@ export async function POST(req: NextRequest) {
         // Collect pending events
         if (toolResult.pendingEvent) {
           pendingEvents.push(toolResult.pendingEvent);
+        }
+
+        // Collect pending deletions
+        if (toolResult.pendingDeletion) {
+          pendingDeletions.push(toolResult.pendingDeletion);
         }
 
         // Track if we should clear pending events
@@ -277,6 +341,7 @@ export async function POST(req: NextRequest) {
     role: "assistant",
     content: "I'm sorry, I wasn't able to complete that request. Please try again.",
     pendingEvents: pendingEvents.length > 0 ? pendingEvents : undefined,
+    pendingDeletions: pendingDeletions.length > 0 ? pendingDeletions : undefined,
     clearPendingEvents: shouldClearPendingEvents || undefined,
   });
 }
