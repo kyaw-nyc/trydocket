@@ -19,8 +19,7 @@ function diffMinutes(a: number, b: number): number {
  */
 export function selectColorId(
   existing: SimpleEvent[],
-  candidateStart: string,
-  candidateEnd: string
+  candidateStart: string
 ): string {
   const startMs = Date.parse(candidateStart);
   const sorted = [...existing].sort(

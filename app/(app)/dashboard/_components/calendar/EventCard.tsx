@@ -20,7 +20,7 @@ type EventCardProps = {
 
 function EventCardComponent({ item, colors, defaultColor, onSelect }: EventCardProps) {
   const { event, top, height, leftPercent, widthPercent } = item;
-  const { clearPendingEvents, confirmPendingEvents, isConfirming, pendingDeletions, clearPendingDeletions, confirmPendingDeletions, isDeleting, theme } = useCalendar();
+  const { clearPendingEvents, confirmPendingEvents, isConfirming, pendingEvents, pendingDeletions, clearPendingDeletions, confirmPendingDeletions, isDeleting, theme } = useCalendar();
 
   // Memoize color calculations to avoid recomputing on every render
   const colorData = useMemo(() => {
@@ -30,7 +30,7 @@ function EventCardComponent({ item, colors, defaultColor, onSelect }: EventCardP
     const timeColor = textColor === "#ffffff" ? "rgba(255,255,255,0.9)" : "rgba(0,0,0,0.7)";
     const locationColor = textColor === "#ffffff" ? "rgba(255,255,255,0.8)" : "rgba(0,0,0,0.6)";
     return { color, textColor, hoverColor, timeColor, locationColor };
-  }, [event.colorId, colors, defaultColor]);
+  }, [event, colors, defaultColor]);
 
   const { color, textColor, hoverColor, timeColor, locationColor } = colorData;
 
@@ -41,7 +41,7 @@ function EventCardComponent({ item, colors, defaultColor, onSelect }: EventCardP
     // Sun=0, Mon=1, Tue=2 → banner on right (pointing left)
     // Wed=3, Thu=4, Fri=5, Sat=6 → banner on left (pointing right)
     return dayOfWeek <= 2 ? "right" : "left";
-  }, [event.start?.dateTime]);
+  }, [event]);
 
   const isDark = theme === "dark";
 
@@ -162,6 +162,9 @@ function EventCardComponent({ item, colors, defaultColor, onSelect }: EventCardP
     const bannerHover = isDark ? "hover:bg-gray-200" : "hover:bg-gray-700";
     const arrowColor = isDark ? "border-white" : "border-gray-900";
     const showBanner = event.showConfirmBanner !== false; // Show banner by default for backwards compatibility
+    const pendingAddCount = pendingEvents.length;
+    const addLabel = pendingAddCount > 1 ? `Add ${pendingAddCount} events?` : "Add this event?";
+    const addButtonLabel = pendingAddCount > 1 ? "Add all" : "Add";
 
     return (
       <div
@@ -185,7 +188,7 @@ function EventCardComponent({ item, colors, defaultColor, onSelect }: EventCardP
             <div className={`${bannerBg} ${bannerText} rounded-xl shadow-2xl px-3 py-2.5 flex flex-col gap-2 min-w-[140px]`}>
               <div className="flex items-center gap-2">
                 <div className={`h-2 w-2 rounded-full ${isDark ? "bg-gray-900" : "bg-white"} animate-pulse`} />
-                <span className="font-semibold text-sm">Add this event?</span>
+                <span className="font-semibold text-sm">{addLabel}</span>
               </div>
               <div className="flex items-center gap-2">
                 <Button
@@ -209,7 +212,7 @@ function EventCardComponent({ item, colors, defaultColor, onSelect }: EventCardP
                   ) : (
                     <>
                       <Check className="h-4 w-4 mr-1" />
-                      Add
+                      {addButtonLabel}
                     </>
                   )}
                 </Button>

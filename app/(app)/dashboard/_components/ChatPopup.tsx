@@ -14,8 +14,10 @@ type ChatPopupProps = {
   isMobile?: boolean;
 };
 
+const CANCEL_INTENT_REGEX = /\b(stop|cancel|never mind|nevermind|nvm|abort|don't add|dont add|do not add|don't delete|dont delete|do not delete|forget it|keep it|keep that|leave it)\b/i;
+
 export default function ChatPopup({ sidebarOpen = false, isMobile = false }: ChatPopupProps) {
-  const { triggerRefresh, theme, pendingEvents, setPendingEvents, clearPendingEvents, clearPendingDeletions, setPendingDeletions, goToDate, setScrollToTime } = useCalendar();
+  const { triggerRefresh, theme, pendingEvents, pendingDeletions, setPendingEvents, clearPendingEvents, clearPendingDeletions, setPendingDeletions, goToDate, setScrollToTime } = useCalendar();
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
@@ -61,6 +63,39 @@ export default function ChatPopup({ sidebarOpen = false, isMobile = false }: Cha
     setLoading(true);
 
     try {
+      // If the user asks to stop/cancel while previews are showing, clear them immediately without waiting for the model
+      const wantsToCancelPreview = CANCEL_INTENT_REGEX.test(text);
+      if (wantsToCancelPreview) {
+        if (pendingEvents.length > 0 || pendingDeletions.length > 0) {
+          clearPendingEvents();
+          clearPendingDeletions();
+
+          const cleared: string[] = [];
+          if (pendingEvents.length > 0) {
+            cleared.push(`${pendingEvents.length} pending event${pendingEvents.length > 1 ? "s" : ""}`);
+          }
+          if (pendingDeletions.length > 0) {
+            cleared.push(`${pendingDeletions.length} pending deletion${pendingDeletions.length > 1 ? "s" : ""}`);
+          }
+
+          const summary = cleared.length > 0 ? cleared.join(" and ") : "pending changes";
+          setMessages((prev) => [
+            ...prev,
+            { role: "assistant", content: `No problem—cleared ${summary}. Nothing will be added or deleted.` },
+          ]);
+          setLoading(false);
+          return;
+        } else {
+          // Nothing pending to cancel—ack immediately to prevent hallucinations
+          setMessages((prev) => [
+            ...prev,
+            { role: "assistant", content: "Nothing is pending—everything already went through. Want me to recreate or undo anything?" },
+          ]);
+          setLoading(false);
+          return;
+        }
+      }
+
       // Add timeout to prevent hanging
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 60000); // 60 second timeout
@@ -74,6 +109,8 @@ export default function ChatPopup({ sidebarOpen = false, isMobile = false }: Cha
           // Pass current pending events so AI knows what's actually pending vs confirmed
           hasPendingEvents: pendingEvents.length > 0,
           pendingEventSummaries: pendingEvents.map(e => e.summary),
+          hasPendingDeletions: pendingDeletions.length > 0,
+          pendingDeletionSummaries: pendingDeletions.map(d => d.summary),
         }),
         signal: controller.signal,
       });
@@ -88,6 +125,9 @@ export default function ChatPopup({ sidebarOpen = false, isMobile = false }: Cha
       if (data.clearPendingEvents === true) {
         clearPendingEvents();
         clearPendingDeletions(); // Also clear any pending deletions
+      }
+      if (data.clearPendingDeletions === true) {
+        clearPendingDeletions();
       }
 
       if (data.pendingEvents && Array.isArray(data.pendingEvents) && data.pendingEvents.length > 0) {
@@ -173,7 +213,7 @@ export default function ChatPopup({ sidebarOpen = false, isMobile = false }: Cha
     } finally {
       setLoading(false);
     }
-  }, [input, loading, messages, pendingEvents, setPendingEvents, clearPendingEvents, clearPendingDeletions, setPendingDeletions, goToDate, setScrollToTime, triggerRefresh]);
+  }, [input, loading, messages, pendingEvents, pendingDeletions, setPendingEvents, clearPendingEvents, clearPendingDeletions, setPendingDeletions, goToDate, setScrollToTime, triggerRefresh]);
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && !e.shiftKey) {

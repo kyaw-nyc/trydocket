@@ -101,13 +101,14 @@ export const deleteEventSchema = z.object({
 
 export const cancelPendingSchema = z.object({});
 
-const toolSchemas: Record<string, z.ZodSchema<any> | undefined> = {
+const toolSchemas: Record<string, z.ZodTypeAny | undefined> = {
   list_events: listEventsSchema,
   propose_event: proposeEventSchema,
   update_event: updateEventSchema,
   propose_delete_event: proposeDeleteSchema,
   delete_event: deleteEventSchema,
   cancel_pending_events: cancelPendingSchema,
+  cancel_pending_deletions: cancelPendingSchema,
 };
 
 export function validateToolArgs(toolName: string, args: unknown): CalendarToolArgs {

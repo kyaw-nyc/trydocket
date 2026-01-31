@@ -52,7 +52,7 @@ async function executeCalendarTool(
   args: CalendarToolArgs,
   accessToken: string,
   userTimeZone: string
-): Promise<{ result: string; pendingEvent?: PendingEventData; pendingDeletion?: PendingDeletionData; clearPendingEvents?: boolean }> {
+): Promise<{ result: string; pendingEvent?: PendingEventData; pendingDeletion?: PendingDeletionData; clearPendingEvents?: boolean; clearPendingDeletions?: boolean }> {
   switch (name) {
     case "list_events": {
       const events = await listEvents(
@@ -211,6 +211,15 @@ async function executeCalendarTool(
         clearPendingEvents: true,
       };
     }
+    case "cancel_pending_deletions": {
+      return {
+        result: JSON.stringify({
+          success: true,
+          message: "All pending deletion previews have been cancelled and removed from the calendar.",
+        }),
+        clearPendingDeletions: true,
+      };
+    }
     default:
       return { result: JSON.stringify({ error: `Unknown tool: ${name}` }) };
   }
@@ -223,12 +232,23 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const { messages, timezone, hasPendingEvents, pendingEventSummaries } = (await req.json()) as {
+  const body = (await req.json()) as {
     messages: ChatCompletionMessageParam[];
     timezone?: string;
     hasPendingEvents?: boolean;
     pendingEventSummaries?: string[];
+    hasPendingDeletions?: boolean;
+    pendingDeletionSummaries?: string[];
   };
+
+  const {
+    messages,
+    timezone,
+    hasPendingEvents,
+    pendingEventSummaries,
+    hasPendingDeletions,
+    pendingDeletionSummaries,
+  } = body;
 
   // Get current time formatted nicely
   const now = new Date();
@@ -266,15 +286,26 @@ IMPORTANT: Even if the conversation history shows you proposed events earlier, t
 This is the CURRENT state - trust this over conversation history.`;
   }
 
+  let pendingDeletionsContext = "";
+  if (hasPendingDeletions && pendingDeletionSummaries && pendingDeletionSummaries.length > 0) {
+    pendingDeletionsContext = `\n\n**PENDING DELETIONS (awaiting confirmation):**
+${pendingDeletionSummaries.map(s => `- "${s}"`).join("\n")}
+
+These deletions are previews. Use cancel_pending_deletions to remove the deletion highlights.`;
+  } else {
+    pendingDeletionsContext = `\n\n**There are ZERO pending deletions on the calendar.**`;
+  }
+
   // Build conversation with dynamic system prompt
   const conversationMessages: ChatCompletionMessageParam[] = [
-    { role: "system", content: getSystemPrompt(currentTime, userTimezone) + pendingEventsContext },
+    { role: "system", content: getSystemPrompt(currentTime, userTimezone) + pendingEventsContext + pendingDeletionsContext },
     ...messages,
   ];
 
   const pendingEvents: PendingEventData[] = [];
   const pendingDeletions: PendingDeletionData[] = [];
   let shouldClearPendingEvents = false;
+  let shouldClearPendingDeletions = false;
 
   // Function-calling loop: keep calling until we get a final text response
   const maxIterations = 10;
@@ -300,6 +331,7 @@ This is the CURRENT state - trust this over conversation history.`;
         pendingEvents: pendingEvents.length > 0 ? pendingEvents : undefined,
         pendingDeletions: pendingDeletions.length > 0 ? pendingDeletions : undefined,
         clearPendingEvents: shouldClearPendingEvents || undefined,
+        clearPendingDeletions: shouldClearPendingDeletions || undefined,
       });
     }
 
@@ -308,7 +340,7 @@ This is the CURRENT state - trust this over conversation history.`;
       if (toolCall.type !== "function") continue;
 
       const rawArgs = JSON.parse(toolCall.function.arguments);
-      let toolResult: { result: string; pendingEvent?: PendingEventData; pendingDeletion?: PendingDeletionData; clearPendingEvents?: boolean };
+      let toolResult: { result: string; pendingEvent?: PendingEventData; pendingDeletion?: PendingDeletionData; clearPendingEvents?: boolean; clearPendingDeletions?: boolean };
 
       try {
         const args = validateToolArgs(toolCall.function.name, rawArgs);
@@ -328,8 +360,7 @@ This is the CURRENT state - trust this over conversation history.`;
               endDateTime: e.endDateTime,
               colorId: e.colorId,
             })),
-            toolResult.pendingEvent.startDateTime,
-            toolResult.pendingEvent.endDateTime
+            toolResult.pendingEvent.startDateTime
           );
 
           pendingEvents.push({
@@ -346,6 +377,9 @@ This is the CURRENT state - trust this over conversation history.`;
         // Track if we should clear pending events
         if (toolResult.clearPendingEvents) {
           shouldClearPendingEvents = true;
+        }
+        if (toolResult.clearPendingDeletions) {
+          shouldClearPendingDeletions = true;
         }
       } catch (error) {
         if (error instanceof ZodError) {
@@ -378,5 +412,6 @@ This is the CURRENT state - trust this over conversation history.`;
     pendingEvents: pendingEvents.length > 0 ? pendingEvents : undefined,
     pendingDeletions: pendingDeletions.length > 0 ? pendingDeletions : undefined,
     clearPendingEvents: shouldClearPendingEvents || undefined,
+    clearPendingDeletions: shouldClearPendingDeletions || undefined,
   });
 }
