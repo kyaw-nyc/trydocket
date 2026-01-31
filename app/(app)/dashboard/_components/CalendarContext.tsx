@@ -11,7 +11,10 @@ export type PendingEvent = {
   endDateTime: string;
   timeZone: string;
   recurrence?: string[];
+  calendarId?: string;
 };
+
+type GoToDateFn = (date: Date) => void;
 
 type CalendarContextType = {
   refreshKey: number;
@@ -24,6 +27,8 @@ type CalendarContextType = {
   clearPendingEvents: () => void;
   confirmPendingEvents: () => Promise<void>;
   isConfirming: boolean;
+  goToDate: GoToDateFn | null;
+  setGoToDate: (fn: GoToDateFn) => void;
 };
 
 const CalendarContext = createContext<CalendarContextType | null>(null);
@@ -33,9 +38,14 @@ export function CalendarProvider({ children }: { children: ReactNode }) {
   const [theme, setTheme] = useState<"light" | "dark">("light");
   const [pendingEvents, setPendingEvents] = useState<PendingEvent[]>([]);
   const [isConfirming, setIsConfirming] = useState(false);
+  const [goToDateFn, setGoToDateFn] = useState<GoToDateFn | null>(null);
 
   const triggerRefresh = useCallback(() => {
     setRefreshKey((k) => k + 1);
+  }, []);
+
+  const setGoToDate = useCallback((fn: GoToDateFn) => {
+    setGoToDateFn(() => fn);
   }, []);
 
   const addPendingEvent = useCallback((event: PendingEvent) => {
@@ -69,11 +79,11 @@ export function CalendarProvider({ children }: { children: ReactNode }) {
   }, [pendingEvents, triggerRefresh]);
 
   return (
-    <CalendarContext.Provider 
-      value={{ 
-        refreshKey, 
-        triggerRefresh, 
-        theme, 
+    <CalendarContext.Provider
+      value={{
+        refreshKey,
+        triggerRefresh,
+        theme,
         setTheme,
         pendingEvents,
         setPendingEvents,
@@ -81,6 +91,8 @@ export function CalendarProvider({ children }: { children: ReactNode }) {
         clearPendingEvents,
         confirmPendingEvents,
         isConfirming,
+        goToDate: goToDateFn,
+        setGoToDate,
       }}
     >
       {children}

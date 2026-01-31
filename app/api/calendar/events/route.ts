@@ -68,6 +68,7 @@ type PendingEvent = {
   endDateTime: string;
   timeZone: string;
   recurrence?: string[];
+  calendarId?: string;
 };
 
 export async function POST(req: NextRequest) {
@@ -88,20 +89,24 @@ export async function POST(req: NextRequest) {
 
       for (const pendingEvent of body.events as PendingEvent[]) {
         try {
-          const event = await createEvent(accessToken, {
-            summary: pendingEvent.summary,
-            description: pendingEvent.description,
-            location: pendingEvent.location,
-            start: {
-              dateTime: pendingEvent.startDateTime,
-              timeZone: pendingEvent.timeZone,
+          const event = await createEvent(
+            accessToken,
+            {
+              summary: pendingEvent.summary,
+              description: pendingEvent.description,
+              location: pendingEvent.location,
+              start: {
+                dateTime: pendingEvent.startDateTime,
+                timeZone: pendingEvent.timeZone,
+              },
+              end: {
+                dateTime: pendingEvent.endDateTime,
+                timeZone: pendingEvent.timeZone,
+              },
+              recurrence: pendingEvent.recurrence,
             },
-            end: {
-              dateTime: pendingEvent.endDateTime,
-              timeZone: pendingEvent.timeZone,
-            },
-            recurrence: pendingEvent.recurrence,
-          });
+            pendingEvent.calendarId || "primary"
+          );
           createdEvents.push(event);
         } catch (err) {
           errors.push({

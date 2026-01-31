@@ -39,6 +39,7 @@ export type UserCalendar = {
   backgroundColor?: string | null;
   foregroundColor?: string | null;
   colorId?: string | null;
+  accessRole?: 'owner' | 'writer' | 'reader' | 'freeBusyReader';
 };
 
 export type PositionedEvent = {
@@ -58,6 +59,8 @@ export type CalendarLegendEntry = {
   name: string;
   swatch: string;
   isPrimary: boolean;
+  isOwned: boolean;
+  accessRole?: string;
 };
 
 export type ColorOption = {

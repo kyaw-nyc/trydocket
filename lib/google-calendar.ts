@@ -62,11 +62,12 @@ export async function createEvent(
     start: { dateTime: string; timeZone?: string };
     end: { dateTime: string; timeZone?: string };
     recurrence?: string[];
-  }
+  },
+  calendarId = "primary"
 ) {
   const calendar = getCalendar(accessToken);
   const res = await calendar.events.insert({
-    calendarId: "primary",
+    calendarId,
     requestBody: event,
   });
   return res.data;

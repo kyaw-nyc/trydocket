@@ -26,6 +26,7 @@ type CalendarHeaderProps = {
   weekLabel: string;
   loading: boolean;
   isDark: boolean;
+  isViewingCurrentWeek: boolean;
   onToggleSidebar: () => void;
   onToday: () => void;
   onPreviousWeek: () => void;
@@ -38,6 +39,7 @@ function CalendarHeaderComponent({
   weekLabel,
   loading,
   isDark,
+  isViewingCurrentWeek,
   onToggleSidebar,
   onToday,
   onPreviousWeek,
@@ -46,7 +48,7 @@ function CalendarHeaderComponent({
   onToggleTheme,
 }: CalendarHeaderProps) {
   return (
-    <header className="flex items-center justify-between border-b border-border bg-background px-4 py-3 md:px-6">
+    <header className="flex items-center justify-between bg-background px-4 py-3 md:px-6">
       <div className="flex items-center gap-2 md:gap-3">
         <Button
           variant="ghost"
@@ -62,17 +64,6 @@ function CalendarHeaderComponent({
         </Button>
 
         <div className="flex items-center gap-1 md:gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            className={cn(
-              "rounded-full px-4 font-semibold cursor-pointer",
-              isDark && "border-white text-white hover:bg-white/10 hover:text-white"
-            )}
-            onClick={onToday}
-          >
-            Today
-          </Button>
           <Button
             variant="ghost"
             size="icon"
@@ -105,6 +96,20 @@ function CalendarHeaderComponent({
           </span>
           <span className="text-xs text-muted-foreground">Week view</span>
         </div>
+
+        {!isViewingCurrentWeek && (
+          <Button
+            variant="outline"
+            size="sm"
+            className={cn(
+              "rounded-full px-3 py-1.5 text-sm font-semibold cursor-pointer",
+              isDark && "border-white text-white hover:bg-white/10 hover:text-white"
+            )}
+            onClick={onToday}
+          >
+            Go back to Today
+          </Button>
+        )}
       </div>
 
       <div className="flex items-center gap-2 md:gap-3">

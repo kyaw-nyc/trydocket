@@ -1,38 +1,67 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import ChatMessage from "./ChatMessage";
 import { useCalendar, PendingEvent } from "./CalendarContext";
+import { cn } from "@/lib/utils";
 
 type Message = {
   role: "user" | "assistant";
   content: string;
 };
 
-export default function ChatPopup() {
-  const { triggerRefresh, theme, setPendingEvents, pendingEvents } = useCalendar();
-  const [isOpen, setIsOpen] = useState(false);
+type ChatPopupProps = {
+  sidebarOpen?: boolean;
+  isMobile?: boolean;
+};
+
+export default function ChatPopup({ sidebarOpen = false, isMobile = false }: ChatPopupProps) {
+  const { triggerRefresh, theme, setPendingEvents, pendingEvents, goToDate } = useCalendar();
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
+  const [isExpanded, setIsExpanded] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
-  const prevPendingCountRef = useRef(pendingEvents.length);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
 
+  const isDark = theme === "dark";
+
+  // Auto-focus input on mount
+  useEffect(() => {
+    inputRef.current?.focus();
+  }, []);
+
+  // Focus input after loading completes
+  useEffect(() => {
+    if (!loading) {
+      inputRef.current?.focus();
+    }
+  }, [loading]);
+
+  // Scroll to bottom when messages update
   useEffect(() => {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
   }, [messages]);
 
-  // Auto-collapse chat when new pending events are added so user can see the calendar
+  // Auto-expand when messages exist
   useEffect(() => {
-    if (pendingEvents.length > prevPendingCountRef.current && isOpen) {
-      setIsOpen(false);
+    if (messages.length > 0) {
+      setIsExpanded(true);
     }
-    prevPendingCountRef.current = pendingEvents.length;
-  }, [pendingEvents.length, isOpen]);
+  }, [messages.length]);
 
-  // Get user's timezone
+  // Auto-resize textarea
+  useEffect(() => {
+    const textarea = inputRef.current;
+    if (textarea) {
+      textarea.style.height = "auto";
+      const newHeight = Math.min(textarea.scrollHeight, 120);
+      textarea.style.height = `${newHeight}px`;
+    }
+  }, [input]);
+
   const getUserTimezone = () => {
     try {
       return Intl.DateTimeFormat().resolvedOptions().timeZone;
@@ -41,7 +70,7 @@ export default function ChatPopup() {
     }
   };
 
-  async function handleSubmit(e: React.FormEvent) {
+  const handleSubmit = useCallback(async (e: React.FormEvent) => {
     e.preventDefault();
     const text = input.trim();
     if (!text || loading) return;
@@ -56,7 +85,7 @@ export default function ChatPopup() {
       const res = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ 
+        body: JSON.stringify({
           messages: updatedMessages,
           timezone: getUserTimezone(),
         }),
@@ -67,18 +96,21 @@ export default function ChatPopup() {
       }
 
       const data = await res.json();
-      
-      // Handle pending events from AI response
+
       if (data.pendingEvents && Array.isArray(data.pendingEvents)) {
         setPendingEvents((prev: PendingEvent[]) => [...prev, ...data.pendingEvents]);
+
+        if (data.pendingEvents.length > 0 && goToDate) {
+          const firstEventDate = new Date(data.pendingEvents[0].startDateTime);
+          goToDate(firstEventDate);
+        }
       }
-      
+
       setMessages((prev) => [
         ...prev,
         { role: "assistant", content: data.content },
       ]);
-      
-      // Refresh calendar in case AI made changes (updates/deletes)
+
       triggerRefresh();
     } catch {
       setMessages((prev) => [
@@ -91,176 +123,163 @@ export default function ChatPopup() {
     } finally {
       setLoading(false);
     }
-  }
+  }, [input, loading, messages, setPendingEvents, goToDate, triggerRefresh]);
 
-  const isDark = theme === "dark";
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      handleSubmit(e);
+    }
+  };
+
+  const handleClearChat = () => {
+    setMessages([]);
+    setIsExpanded(false);
+    inputRef.current?.focus();
+  };
+
+  // When sidebar is open on desktop, offset the chat to center on the calendar area
+  // Sidebar is 240px (w-60), so we add half of that (120px) to the left position
+  const sidebarOffset = !isMobile && sidebarOpen ? "md:left-[calc(50%+120px)]" : "left-1/2";
 
   return (
-    <div className="fixed bottom-4 right-4 z-50">
-      {isOpen ? (
-        <div className={`flex h-[500px] w-[380px] flex-col rounded-xl border shadow-2xl ${
-          isDark ? "border-[#3c4043] bg-[#131314]" : "border-gray-200 bg-white"
-        }`}>
+    <div className={cn(
+      "fixed bottom-6 z-50 w-full max-w-xl -translate-x-1/2 px-4 pointer-events-none transition-[left] duration-300 ease-in-out",
+      sidebarOffset
+    )}>
+      {/* Messages container - only shows when there are messages */}
+      {isExpanded && messages.length > 0 && (
+        <div
+          className={cn(
+            "mb-3 rounded-2xl backdrop-blur-md shadow-sm pointer-events-auto",
+            isDark
+              ? "bg-black/40 border border-white/10"
+              : "bg-white/40 border border-black/10"
+          )}
+        >
           {/* Header */}
-          <div className={`flex items-center justify-between border-b px-4 py-3 ${
-            isDark ? "border-[#3c4043]" : "border-gray-200"
-          }`}>
+          <div
+            className={cn(
+              "flex items-center justify-between px-4 py-2",
+              isDark ? "border-b border-white/10" : "border-b border-black/5"
+            )}
+          >
             <div className="flex items-center gap-2">
               <div
-                className={`flex h-8 w-8 items-center justify-center rounded-full ${
-                  isDark ? "bg-white text-black" : "bg-black text-white"
-                }`}
+                className={cn(
+                  "flex h-5 w-5 items-center justify-center rounded-full",
+                  isDark ? "bg-white/20" : "bg-black/10"
+                )}
               >
-                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <svg className={cn("h-3 w-3", isDark ? "text-white" : "text-black")} fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
                 </svg>
               </div>
-              <div>
-                <h2 className={`text-sm font-semibold ${isDark ? "text-[#e8eaed]" : "text-gray-900"}`}>
-                  Docket AI
-                </h2>
-                <p className={`text-xs ${isDark ? "text-[#9aa0a6]" : "text-gray-500"}`}>
-                  Your calendar assistant
-                </p>
-              </div>
+              <span className={cn("text-xs font-medium", isDark ? "text-white/80" : "text-black/80")}>
+                Docket AI
+              </span>
             </div>
             <button
-              onClick={() => setIsOpen(false)}
-              className={`rounded-md p-1 ${
-                isDark ? "text-[#9aa0a6] hover:bg-[#3c4043]" : "text-gray-500 hover:bg-gray-100"
-              }`}
+              onClick={handleClearChat}
+              className={cn(
+                "rounded px-2 py-0.5 text-xs transition-colors",
+                isDark
+                  ? "text-white/50 hover:text-white hover:bg-white/10"
+                  : "text-black/50 hover:text-black hover:bg-black/5"
+              )}
             >
-              <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-              </svg>
+              Clear
             </button>
           </div>
 
-          {/* Pending events indicator */}
-          {pendingEvents.length > 0 && (
-            <div className={`flex items-center gap-2 px-4 py-2 text-xs ${
-              isDark ? "bg-white/5 text-white/80" : "bg-black/5 text-black/80"
-            }`}>
-              <div className={`h-2 w-2 rounded-full animate-pulse ${isDark ? "bg-white" : "bg-black"}`} />
-              {pendingEvents.length} event{pendingEvents.length > 1 ? "s" : ""} pending confirmation
-            </div>
-          )}
-
           {/* Messages */}
-          <div ref={scrollRef} className="flex-1 space-y-3 overflow-y-auto p-4">
-            {messages.length === 0 && (
-              <div className="flex h-full flex-col items-center justify-center gap-4">
-                <div className={`flex h-16 w-16 items-center justify-center rounded-full ${
-                  isDark ? "bg-[#303134]" : "bg-gray-100"
-                }`}>
-                  <svg className={`h-8 w-8 ${isDark ? "text-[#9aa0a6]" : "text-gray-400"}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                  </svg>
-                </div>
-                <div className="text-center">
-                  <p className={`text-sm font-medium ${isDark ? "text-[#e8eaed]" : "text-gray-900"}`}>
-                    Hi! I&apos;m Docket
-                  </p>
-                  <p className={`mt-1 text-xs ${isDark ? "text-[#9aa0a6]" : "text-gray-500"}`}>
-                    I can help you manage your calendar.
-                  </p>
-                </div>
-                <div className={`w-full space-y-2 ${isDark ? "text-[#9aa0a6]" : "text-gray-500"}`}>
-                  <p className="text-center text-xs font-medium uppercase tracking-wide opacity-60">Try asking:</p>
-                  {[
-                    "What's on my schedule today?",
-                    "Add 1 hour of reading time",
-                    "Schedule a meeting tomorrow at 3pm",
-                  ].map((suggestion, i) => (
-                    <button
-                      key={i}
-                      onClick={() => setInput(suggestion)}
-                      className={`w-full rounded-lg border px-3 py-2 text-left text-xs transition-colors ${
-                        isDark 
-                          ? "border-[#3c4043] hover:bg-[#303134] hover:text-[#e8eaed]" 
-                          : "border-gray-200 hover:bg-gray-50 hover:text-gray-900"
-                      }`}
-                    >
-                      &ldquo;{suggestion}&rdquo;
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
+          <div ref={scrollRef} className="max-h-[40vh] space-y-2 overflow-y-auto p-3">
             {messages.map((msg, i) => (
               <ChatMessage key={i} role={msg.role} content={msg.content} theme={theme} />
             ))}
             {loading && (
               <div className="flex justify-start">
-                <div className={`flex items-center gap-2 rounded-2xl px-4 py-2.5 text-sm ${
-                  isDark ? "bg-[#303134] text-[#9aa0a6]" : "bg-gray-100 text-gray-500"
-                }`}>
+                <div
+                  className={cn(
+                    "flex items-center gap-2 rounded-xl px-3 py-2 text-xs",
+                    isDark ? "bg-white/10 text-white/60" : "bg-black/5 text-black/60"
+                  )}
+                >
                   <div className="flex gap-1">
-                    <span className="h-2 w-2 rounded-full bg-current animate-bounce" style={{ animationDelay: "0ms" }} />
-                    <span className="h-2 w-2 rounded-full bg-current animate-bounce" style={{ animationDelay: "150ms" }} />
-                    <span className="h-2 w-2 rounded-full bg-current animate-bounce" style={{ animationDelay: "300ms" }} />
+                    <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-current" style={{ animationDelay: "0ms" }} />
+                    <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-current" style={{ animationDelay: "150ms" }} />
+                    <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-current" style={{ animationDelay: "300ms" }} />
                   </div>
                   <span>Thinking...</span>
                 </div>
               </div>
             )}
           </div>
-
-          {/* Input */}
-          <form
-            onSubmit={handleSubmit}
-            className={`border-t p-3 ${isDark ? "border-[#3c4043]" : "border-gray-200"}`}
-          >
-            <div className="flex gap-2">
-              <input
-                type="text"
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                placeholder="Ask me anything about your calendar..."
-                className={`flex-1 rounded-lg border px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 ${
-                  isDark
-                    ? "border-[#5f6368] bg-[#303134] text-[#e8eaed] placeholder-[#9aa0a6]"
-                    : "border-gray-300 bg-white text-gray-900 placeholder-gray-400"
-                }`}
-                disabled={loading}
-              />
-              <button
-                type="submit"
-                disabled={loading || !input.trim()}
-                className={`flex items-center justify-center rounded-lg px-4 py-2 text-sm font-medium transition-colors disabled:opacity-50 ${
-                  isDark ? "bg-white text-black hover:bg-gray-200" : "bg-black text-white hover:bg-gray-800"
-                }`}
-              >
-                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
-                </svg>
-              </button>
-            </div>
-          </form>
         </div>
-      ) : (
-        <button
-          onClick={() => setIsOpen(true)}
-          className={`group relative flex h-14 w-14 items-center justify-center rounded-full shadow-lg transition-all hover:scale-105 ${
-            isDark ? "bg-white text-black hover:bg-gray-200" : "bg-black text-white hover:bg-gray-800"
-          }`}
-        >
-          <svg className="h-6 w-6 transition-transform group-hover:scale-110" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"
-            />
-          </svg>
-          {pendingEvents.length > 0 && (
-            <span className={`absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full text-xs font-bold ${
-              isDark ? "bg-black text-white" : "bg-white text-black"
-            }`}>
-              {pendingEvents.length}
-            </span>
+      )}
+
+      {/* Input bar - always visible, glossy transparent */}
+      <form onSubmit={handleSubmit} className="pointer-events-auto">
+        <div
+          className={cn(
+            "flex items-end gap-3 rounded-2xl px-4 py-3 backdrop-blur-md shadow-sm",
+            isDark
+              ? "bg-black/40 border border-white/10"
+              : "bg-white/40 border border-black/10"
           )}
-        </button>
+        >
+          <textarea
+            ref={inputRef}
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={handleKeyDown}
+            placeholder="Ask Docket anything..."
+            disabled={loading}
+            rows={1}
+            className={cn(
+              "flex-1 resize-none border-none bg-transparent text-sm outline-none",
+              "min-h-[24px] max-h-[120px]",
+              isDark
+                ? "text-white placeholder-white/40"
+                : "text-gray-900 placeholder-gray-500"
+            )}
+          />
+          <button
+            type="submit"
+            disabled={loading || !input.trim()}
+            className={cn(
+              "flex h-8 w-8 shrink-0 items-center justify-center rounded-full transition-all",
+              "disabled:opacity-30",
+              isDark
+                ? "bg-white/20 text-white hover:bg-white/30"
+                : "bg-black/10 text-black hover:bg-black/20"
+            )}
+          >
+            {loading ? (
+              <svg className="h-4 w-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+              </svg>
+            ) : (
+              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+              </svg>
+            )}
+          </button>
+        </div>
+      </form>
+
+      {/* Pending events indicator */}
+      {pendingEvents.length > 0 && (
+        <div
+          className={cn(
+            "mt-2 flex items-center justify-center gap-2 text-xs pointer-events-auto",
+            isDark ? "text-white/50" : "text-black/50"
+          )}
+        >
+          <div className={cn("h-1.5 w-1.5 animate-pulse rounded-full", isDark ? "bg-white/60" : "bg-black/60")} />
+          {pendingEvents.length} event{pendingEvents.length > 1 ? "s" : ""} pending
+        </div>
       )}
     </div>
   );

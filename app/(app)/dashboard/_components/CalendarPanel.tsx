@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useMemo } from "react";
 import { useCalendar } from "./CalendarContext";
 import { CalendarEvent } from "./types/calendar";
 import { useCalendarNavigation } from "./hooks/useCalendarNavigation";
@@ -9,12 +9,14 @@ import {
   CalendarHeader,
   CalendarSidebar,
   CalendarGrid,
+  PendingEventsBanner,
 } from "./calendar";
 import { EventDetailsSheet } from "./events";
+import ChatPopup from "./ChatPopup";
 import { cn } from "@/lib/utils";
 
 export default function CalendarPanel() {
-  const { theme, setTheme } = useCalendar();
+  const { theme, setTheme, setGoToDate } = useCalendar();
   const isDark = theme === "dark";
 
   const [sidebarOpen, setSidebarOpen] = useState(true);
@@ -61,6 +63,17 @@ export default function CalendarPanel() {
 
   const { triggerRefresh } = useCalendar();
 
+  // Register navigation function in context so ChatPopup can navigate to event dates
+  useEffect(() => {
+    setGoToDate(goToDate);
+  }, [goToDate, setGoToDate]);
+
+  // Get owned calendars for PendingEventsBanner
+  const ownedCalendars = useMemo(
+    () => calendarLegend.filter((c) => c.isOwned && c.id !== "preview"),
+    [calendarLegend]
+  );
+
   const handleToggleSidebar = useCallback(() => {
     setSidebarOpen((v) => !v);
   }, []);
@@ -79,9 +92,26 @@ export default function CalendarPanel() {
   }, []);
 
   return (
-    <div className={cn("flex h-full w-full", isDark ? "dark" : "")}>
-      <div className="flex h-full w-full bg-background">
-        {/* Sidebar */}
+    <div className={cn("flex h-full w-full flex-col", isDark ? "dark" : "")}>
+      {/* Header - spans full width */}
+      <CalendarHeader
+        weekLabel={weekLabel}
+        loading={loading}
+        isDark={isDark}
+        isViewingCurrentWeek={todayIndex >= 0}
+        onToggleSidebar={handleToggleSidebar}
+        onToday={goToToday}
+        onPreviousWeek={goToPreviousWeek}
+        onNextWeek={goToNextWeek}
+        onRefresh={handleRefresh}
+        onToggleTheme={handleToggleTheme}
+      />
+
+      <PendingEventsBanner ownedCalendars={ownedCalendars} />
+
+      {/* Main content area - sidebar and calendar side by side */}
+      <div className="flex flex-1 min-h-0 bg-background">
+        {/* Sidebar - inline, not fixed */}
         <CalendarSidebar
           isOpen={sidebarOpen}
           weekDates={weekDates}
@@ -93,49 +123,33 @@ export default function CalendarPanel() {
           isMobile={isMobile}
         />
 
-        {/* Main area */}
+        {/* Calendar grid */}
         <div className="flex flex-1 flex-col overflow-hidden">
-          <CalendarHeader
-            weekLabel={weekLabel}
-            loading={loading}
-            isDark={isDark}
-            onToggleSidebar={handleToggleSidebar}
-            onToday={goToToday}
-            onPreviousWeek={goToPreviousWeek}
-            onNextWeek={goToNextWeek}
-            onRefresh={handleRefresh}
-            onToggleTheme={handleToggleTheme}
+          <CalendarGrid
+            weekDates={weekDates}
+            timezoneAbbr={timezoneAbbr}
+            todayIndex={todayIndex}
+            getEventsForDay={getEventsForDay}
+            colors={colors}
+            defaultColor={defaultColor}
+            onSelectEvent={handleSelectEvent}
           />
-
-          <div
-            className={cn(
-              "flex flex-1 min-h-0 flex-col transition-all duration-200",
-              !isMobile && sidebarOpen ? "md:pl-60" : "md:pl-0"
-            )}
-          >
-            <CalendarGrid
-              weekDates={weekDates}
-              timezoneAbbr={timezoneAbbr}
-              todayIndex={todayIndex}
-              getEventsForDay={getEventsForDay}
-              colors={colors}
-              defaultColor={defaultColor}
-              onSelectEvent={handleSelectEvent}
-            />
-          </div>
-
-          {/* Event Details Sheet */}
-          {selectedEventDetail && (
-            <EventDetailsSheet
-              open={!!selectedEventDetail}
-              eventId={selectedEventDetail.id}
-              calendarId={selectedEventDetail.calendarId}
-              onClose={handleCloseEventDetails}
-              onUpdated={triggerRefresh}
-            />
-          )}
         </div>
       </div>
+
+      {/* Event Details Sheet */}
+      {selectedEventDetail && (
+        <EventDetailsSheet
+          open={!!selectedEventDetail}
+          eventId={selectedEventDetail.id}
+          calendarId={selectedEventDetail.calendarId}
+          onClose={handleCloseEventDetails}
+          onUpdated={triggerRefresh}
+        />
+      )}
+
+      {/* Chat Popup - centered on calendar area */}
+      <ChatPopup sidebarOpen={sidebarOpen} isMobile={isMobile} />
     </div>
   );
 }

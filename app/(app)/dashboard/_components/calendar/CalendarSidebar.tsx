@@ -64,8 +64,7 @@ function CalendarSidebarComponent({
 
   const sidebarContent = (
     <>
-      <div className="px-4 py-3" />
-      <div className="mt-3 px-3">
+      <div className="px-3 pt-2">
         <MiniCalendar
           baseDate={miniCalendarDate}
           monthMatrix={miniCalendarMonthMatrix}
@@ -75,7 +74,7 @@ function CalendarSidebarComponent({
           onNextMonth={handleNextMonth}
         />
       </div>
-      <div className="mt-3 flex-1 space-y-3 overflow-y-auto px-3 pb-4">
+      <div className="mt-2 flex-1 space-y-2 overflow-y-auto px-3 pb-4">
         <CalendarList
           calendars={calendars}
           selectedIds={selectedCalendarIds}
@@ -99,15 +98,15 @@ function CalendarSidebarComponent({
     );
   }
 
-  // Desktop: Slide sidebar
+  // Desktop: Inline sidebar (not fixed) - part of the same layout as calendar
   return (
     <aside
       className={cn(
-        "fixed left-0 top-14 z-40 hidden h-[calc(100%-56px)] w-60 transform transition-transform duration-200 md:flex md:flex-col bg-background border-r border-border overflow-hidden",
-        isOpen ? "translate-x-0" : "-translate-x-full pointer-events-none"
+        "hidden w-60 shrink-0 md:flex md:flex-col bg-background transition-all duration-200 overflow-hidden",
+        isOpen ? "w-60" : "w-0"
       )}
     >
-      <div className="flex flex-1 flex-col overflow-y-auto">
+      <div className="flex flex-1 flex-col overflow-y-auto w-60">
         {sidebarContent}
       </div>
     </aside>
