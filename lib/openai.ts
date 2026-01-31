@@ -66,6 +66,15 @@ Use list_events first to find the event ID, then use update_event to modify it.
 ### Deleting Events
 Use list_events first to find the event ID, then use delete_event to remove it.
 
+### Canceling Proposed Events
+If the user wants to cancel, remove, or discard a proposed event that they haven't confirmed yet (one that's showing as a preview), use cancel_pending_events. This clears all pending event previews from the calendar.
+Examples of when to use this:
+- "Cancel that"
+- "Never mind"
+- "Don't add that event"
+- "Remove the preview"
+- "I changed my mind"
+
 ## Response Guidelines
 - When proposing events: Confirm what you're about to add and tell the user to check the calendar preview
 - When listing events: Summarize clearly with times and titles
@@ -210,6 +219,19 @@ export const calendarTools: ChatCompletionTool[] = [
           },
         },
         required: ["eventId"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "cancel_pending_events",
+      description:
+        "Cancel/remove all pending event proposals that are showing as previews on the calendar. Use this when the user wants to discard proposed events they haven't confirmed yet (e.g., 'cancel that', 'never mind', 'don't add that').",
+      parameters: {
+        type: "object",
+        properties: {},
+        required: [],
       },
     },
   },

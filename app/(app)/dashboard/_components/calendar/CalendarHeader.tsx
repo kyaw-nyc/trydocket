@@ -49,7 +49,7 @@ function CalendarHeaderComponent({
 }: CalendarHeaderProps) {
   return (
     <header className={cn(
-      "flex items-center justify-between px-4 py-3 md:px-6 rounded-t-xl",
+      "flex items-center justify-between px-4 py-3 md:px-6",
       isDark ? "bg-background" : "bg-white"
     )}>
       <div className="flex items-center gap-2 md:gap-3">

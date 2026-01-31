@@ -44,12 +44,13 @@ function EventCardComponent({ item, colors, defaultColor, onSelect }: EventCardP
     onSelect(event);
   };
 
-  // Pending event with action banner
+  // Pending event with optional action banner
   if (event.isPending) {
     const bannerBg = isDark ? "bg-white" : "bg-gray-900";
     const bannerText = isDark ? "text-gray-900" : "text-white";
     const bannerHover = isDark ? "hover:bg-gray-200" : "hover:bg-gray-700";
     const arrowColor = isDark ? "border-white" : "border-gray-900";
+    const showBanner = event.showConfirmBanner !== false; // Show banner by default for backwards compatibility
 
     return (
       <div
@@ -60,57 +61,59 @@ function EventCardComponent({ item, colors, defaultColor, onSelect }: EventCardP
           width: `${widthPercent}%`,
         }}
       >
-        {/* Action banner - positioned left or right */}
-        <div
-          className={`absolute z-20 ${
-            bannerPosition === "right"
-              ? "left-full ml-2"
-              : "right-full mr-2"
-          }`}
-          style={{ top: 0 }}
-        >
-          <div className={`${bannerBg} ${bannerText} rounded-xl shadow-2xl px-3 py-2.5 flex flex-col gap-2 min-w-[140px]`}>
-            <div className="flex items-center gap-2">
-              <div className={`h-2 w-2 rounded-full ${isDark ? "bg-gray-900" : "bg-white"} animate-pulse`} />
-              <span className="font-semibold text-sm">Add this event?</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <Button
-                size="sm"
-                variant="ghost"
-                className={`flex-1 h-8 ${bannerText} ${bannerHover}`}
-                onClick={clearPendingEvents}
-                disabled={isConfirming}
-              >
-                <X className="h-4 w-4 mr-1" />
-                Cancel
-              </Button>
-              <Button
-                size="sm"
-                className="flex-1 h-8 bg-primary hover:bg-primary/90 text-primary-foreground font-semibold"
-                onClick={confirmPendingEvents}
-                disabled={isConfirming}
-              >
-                {isConfirming ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <>
-                    <Check className="h-4 w-4 mr-1" />
-                    Add
-                  </>
-                )}
-              </Button>
-            </div>
-          </div>
-          {/* Pointer arrow - points toward the event */}
+        {/* Action banner - only show on designated events */}
+        {showBanner && (
           <div
-            className={`absolute top-4 w-0 h-0 ${
+            className={`absolute z-20 ${
               bannerPosition === "right"
-                ? `right-full border-t-[8px] border-t-transparent border-b-[8px] border-b-transparent border-r-[8px] ${arrowColor.replace("border-", "border-r-")}`
-                : `left-full border-t-[8px] border-t-transparent border-b-[8px] border-b-transparent border-l-[8px] ${arrowColor.replace("border-", "border-l-")}`
+                ? "left-full ml-2"
+                : "right-full mr-2"
             }`}
-          />
-        </div>
+            style={{ top: 0 }}
+          >
+            <div className={`${bannerBg} ${bannerText} rounded-xl shadow-2xl px-3 py-2.5 flex flex-col gap-2 min-w-[140px]`}>
+              <div className="flex items-center gap-2">
+                <div className={`h-2 w-2 rounded-full ${isDark ? "bg-gray-900" : "bg-white"} animate-pulse`} />
+                <span className="font-semibold text-sm">Add this event?</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className={`flex-1 h-8 cursor-pointer ${bannerText} ${bannerHover}`}
+                  onClick={clearPendingEvents}
+                  disabled={isConfirming}
+                >
+                  <X className="h-4 w-4 mr-1" />
+                  Cancel
+                </Button>
+                <Button
+                  size="sm"
+                  className="flex-1 h-8 cursor-pointer bg-primary hover:bg-primary/90 text-primary-foreground font-semibold"
+                  onClick={confirmPendingEvents}
+                  disabled={isConfirming}
+                >
+                  {isConfirming ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <>
+                      <Check className="h-4 w-4 mr-1" />
+                      Add
+                    </>
+                  )}
+                </Button>
+              </div>
+            </div>
+            {/* Pointer arrow - points toward the event */}
+            <div
+              className={`absolute top-4 w-0 h-0 ${
+                bannerPosition === "right"
+                  ? `right-full border-t-[8px] border-t-transparent border-b-[8px] border-b-transparent border-r-[8px] ${arrowColor.replace("border-", "border-r-")}`
+                  : `left-full border-t-[8px] border-t-transparent border-b-[8px] border-b-transparent border-l-[8px] ${arrowColor.replace("border-", "border-l-")}`
+              }`}
+            />
+          </div>
+        )}
 
         {/* The event card itself */}
         <div

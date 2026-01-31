@@ -48,6 +48,11 @@ export function isSameDay(d1: Date, d2: Date): boolean {
   );
 }
 
+export function getWeekKey(date: Date): string {
+  const weekStart = startOfWeek(date);
+  return weekStart.toISOString().split("T")[0];
+}
+
 export function isToday(date: Date): boolean {
   return isSameDay(date, new Date());
 }

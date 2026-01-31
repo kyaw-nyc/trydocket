@@ -9,6 +9,8 @@ export type CalendarEvent = {
   location?: string;
   description?: string;
   isPending?: boolean;
+  showConfirmBanner?: boolean; // Only show confirm UI on this event
+  pendingGroupId?: string; // Links recurring instances together
 };
 
 export type DetailedEvent = {

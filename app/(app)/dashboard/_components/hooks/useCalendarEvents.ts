@@ -8,9 +8,11 @@ import {
   DEFAULT_COLOR,
   PENDING_COLOR,
   CalendarLegendEntry,
+  STORAGE_KEY,
 } from "../types/calendar";
 import { useCalendar, PendingEvent } from "../CalendarContext";
-import { isSameDay } from "../utils/date-utils";
+import { isSameDay, getWeekKey } from "../utils/date-utils";
+import { expandRecurrence } from "../utils/recurrence-utils";
 
 type UseCalendarEventsOptions = {
   weekDates: Date[];
@@ -45,8 +47,10 @@ export function useCalendarEvents({
   const fetchControllerRef = useRef<AbortController | null>(null);
 
   // ============================================
-  // STEP 1: Fetch events from API
+  // STEP 1: Fetch events from API - prioritize current week
   // ============================================
+  const hasLoadedCurrentWeekRef = useRef(false);
+
   useEffect(() => {
     if (!weekDates.length) return;
 
@@ -55,12 +59,6 @@ export function useCalendarEvents({
       currentWeekStart.setHours(0, 0, 0, 0);
       const currentWeekEnd = new Date(weekDates[6]);
       currentWeekEnd.setHours(23, 59, 59, 999);
-
-      // Extended range for prefetching
-      const timeMin = new Date(currentWeekStart);
-      timeMin.setDate(timeMin.getDate() - prefetchWeeks * 7);
-      const timeMax = new Date(currentWeekEnd);
-      timeMax.setDate(timeMax.getDate() + prefetchWeeks * 7);
 
       const currentFetchId = ++fetchIdRef.current;
       setLoading(true);
@@ -73,6 +71,33 @@ export function useCalendarEvents({
       fetchControllerRef.current = controller;
 
       try {
+        // PHASE 1: Quickly fetch just the current week first
+        if (!hasLoadedCurrentWeekRef.current) {
+          const quickRes = await fetch(
+            `/api/calendar/events?timeMin=${currentWeekStart.toISOString()}&timeMax=${currentWeekEnd.toISOString()}`,
+            { signal: controller.signal }
+          );
+
+          if (currentFetchId !== fetchIdRef.current) return;
+
+          if (quickRes.ok) {
+            const quickData = await quickRes.json();
+            setEvents(quickData.events || []);
+            setColors(quickData.colors || {});
+            setCalendarColors(quickData.calendarColors || {});
+            setCalendars(quickData.calendars || []);
+            setDefaultColor(quickData.defaultColor || null);
+            hasLoadedCurrentWeekRef.current = true;
+            setLoading(false); // Show current week immediately
+          }
+        }
+
+        // PHASE 2: Fetch extended range in background
+        const timeMin = new Date(currentWeekStart);
+        timeMin.setDate(timeMin.getDate() - prefetchWeeks * 7);
+        const timeMax = new Date(currentWeekEnd);
+        timeMax.setDate(timeMax.getDate() + prefetchWeeks * 7);
+
         const res = await fetch(
           `/api/calendar/events?timeMin=${timeMin.toISOString()}&timeMax=${timeMax.toISOString()}`,
           { signal: controller.signal }
@@ -103,7 +128,7 @@ export function useCalendarEvents({
   }, [weekDates, refreshKey, prefetchWeeks, localRefreshKey]);
 
   // ============================================
-  // STEP 2: Select only primary calendar when calendars first load
+  // STEP 2: Select calendars - restore from localStorage or use primary
   // ============================================
   const hasSetInitialSelectionRef = useRef(false);
 
@@ -128,8 +153,27 @@ export function useCalendarEvents({
       return;
     }
 
-    // First load - always select only the primary calendar
+    // First load - try to restore from localStorage
     hasSetInitialSelectionRef.current = true;
+
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY);
+      if (saved) {
+        const savedIds = JSON.parse(saved) as string[];
+        // Validate saved IDs against available calendars
+        const validSavedIds = savedIds.filter((id) =>
+          calendars.some((cal) => cal.id === id)
+        );
+        if (validSavedIds.length > 0) {
+          setSelectedCalendarIds(validSavedIds);
+          return;
+        }
+      }
+    } catch {
+      // Ignore localStorage errors
+    }
+
+    // Fallback: select only the primary calendar
     const primaryCal = calendars.find((c) => c.primary);
     if (primaryCal?.id) {
       setSelectedCalendarIds([primaryCal.id]);
@@ -137,6 +181,17 @@ export function useCalendarEvents({
       setSelectedCalendarIds([calendars[0].id]);
     }
   }, [calendars]);
+
+  // Save selected calendars to localStorage when they change
+  useEffect(() => {
+    if (selectedCalendarIds.length > 0 && hasSetInitialSelectionRef.current) {
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(selectedCalendarIds));
+      } catch {
+        // Ignore localStorage errors
+      }
+    }
+  }, [selectedCalendarIds]);
 
   // ============================================
   // STEP 3: Auto-refresh when tab becomes visible
@@ -197,19 +252,80 @@ export function useCalendarEvents({
     });
   }, [events, selectedCalendarIds]);
 
-  // Pending events converted to calendar format
-  const pendingCalendarEvents = useMemo<CalendarEvent[]>(
-    () =>
-      pendingEvents.map((pe: PendingEvent) => ({
-        id: pe.id,
-        summary: pe.summary,
-        start: { dateTime: pe.startDateTime },
-        end: { dateTime: pe.endDateTime },
-        location: pe.location,
-        isPending: true,
-      })),
-    [pendingEvents]
-  );
+  // Pending events converted to calendar format with recurrence expansion
+  const pendingCalendarEvents = useMemo<CalendarEvent[]>(() => {
+    if (!pendingEvents || pendingEvents.length === 0) {
+      return [];
+    }
+
+    const result: CalendarEvent[] = [];
+    const seenWeeks = new Set<string>(); // Track which weeks have a confirm banner
+
+    pendingEvents.forEach((pe: PendingEvent) => {
+      try {
+        // Validate pending event has required fields
+        if (!pe.id || !pe.startDateTime || !pe.endDateTime) {
+          console.warn("Invalid pending event, missing required fields:", pe);
+          return;
+        }
+
+        // Expand recurrence into individual instances
+        const instances = expandRecurrence({
+          startDateTime: pe.startDateTime,
+          endDateTime: pe.endDateTime,
+          recurrence: pe.recurrence,
+          maxInstances: 100, // Reasonable limit
+        });
+
+        instances.forEach((instance, idx) => {
+          try {
+            const instanceDate = new Date(instance.startDateTime);
+            if (isNaN(instanceDate.getTime())) {
+              console.warn("Invalid instance date:", instance.startDateTime);
+              return;
+            }
+
+            const weekKey = getWeekKey(instanceDate);
+
+            // Show confirm banner on the first instance of each week
+            // This way, if user browses to different weeks, they'll see the confirm option
+            const showBanner = !seenWeeks.has(weekKey);
+            if (showBanner) {
+              seenWeeks.add(weekKey);
+            }
+
+            result.push({
+              id: `${pe.id}-instance-${idx}`,
+              summary: pe.summary,
+              start: { dateTime: instance.startDateTime },
+              end: { dateTime: instance.endDateTime },
+              location: pe.location,
+              isPending: true,
+              showConfirmBanner: showBanner,
+              pendingGroupId: pe.id, // Links all instances together
+            });
+          } catch (instanceError) {
+            console.error("Error processing instance:", instanceError);
+          }
+        });
+      } catch (error) {
+        console.error("Error processing pending event:", error, pe);
+        // Still try to add the event even if expansion fails
+        result.push({
+          id: pe.id,
+          summary: pe.summary,
+          start: { dateTime: pe.startDateTime },
+          end: { dateTime: pe.endDateTime },
+          location: pe.location,
+          isPending: true,
+          showConfirmBanner: true,
+          pendingGroupId: pe.id,
+        });
+      }
+    });
+
+    return result;
+  }, [pendingEvents]);
 
   // All events to display = filtered real events + pending events
   const allEvents = useMemo(

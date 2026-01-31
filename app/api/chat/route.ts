@@ -44,7 +44,7 @@ async function executeCalendarTool(
   // tool args vary per tool; keep flexible and validate per-case
   args: CalendarToolArgs,
   accessToken: string
-): Promise<{ result: string; pendingEvent?: PendingEventData }> {
+): Promise<{ result: string; pendingEvent?: PendingEventData; clearPendingEvents?: boolean }> {
   switch (name) {
     case "list_events": {
       const events = await listEvents(
@@ -159,6 +159,15 @@ async function executeCalendarTool(
       const result = await deleteEvent(accessToken, args.eventId);
       return { result: JSON.stringify(result) };
     }
+    case "cancel_pending_events": {
+      return {
+        result: JSON.stringify({
+          success: true,
+          message: "All pending event proposals have been cancelled and removed from the calendar preview.",
+        }),
+        clearPendingEvents: true,
+      };
+    }
     default:
       return { result: JSON.stringify({ error: `Unknown tool: ${name}` }) };
   }
@@ -197,6 +206,7 @@ export async function POST(req: NextRequest) {
   ];
 
   const pendingEvents: PendingEventData[] = [];
+  let shouldClearPendingEvents = false;
 
   // Function-calling loop: keep calling until we get a final text response
   const maxIterations = 10;
@@ -220,6 +230,7 @@ export async function POST(req: NextRequest) {
         role: "assistant",
         content: message.content,
         pendingEvents: pendingEvents.length > 0 ? pendingEvents : undefined,
+        clearPendingEvents: shouldClearPendingEvents || undefined,
       });
     }
 
@@ -228,7 +239,7 @@ export async function POST(req: NextRequest) {
       if (toolCall.type !== "function") continue;
 
       const args = JSON.parse(toolCall.function.arguments);
-      let toolResult: { result: string; pendingEvent?: PendingEventData };
+      let toolResult: { result: string; pendingEvent?: PendingEventData; clearPendingEvents?: boolean };
 
       try {
         toolResult = await executeCalendarTool(
@@ -236,10 +247,15 @@ export async function POST(req: NextRequest) {
           args,
           session.accessToken
         );
-        
+
         // Collect pending events
         if (toolResult.pendingEvent) {
           pendingEvents.push(toolResult.pendingEvent);
+        }
+
+        // Track if we should clear pending events
+        if (toolResult.clearPendingEvents) {
+          shouldClearPendingEvents = true;
         }
       } catch (error) {
         toolResult = {
@@ -261,5 +277,6 @@ export async function POST(req: NextRequest) {
     role: "assistant",
     content: "I'm sorry, I wasn't able to complete that request. Please try again.",
     pendingEvents: pendingEvents.length > 0 ? pendingEvents : undefined,
+    clearPendingEvents: shouldClearPendingEvents || undefined,
   });
 }

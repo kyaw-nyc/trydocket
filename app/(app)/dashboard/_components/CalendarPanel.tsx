@@ -102,7 +102,7 @@ export default function CalendarPanel() {
       />
 
       {/* Main content area - sidebar and calendar side by side */}
-      <div className="flex flex-1 min-h-0 bg-background rounded-b-xl overflow-hidden">
+      <div className="flex flex-1 min-h-0 bg-background overflow-hidden">
         {/* Sidebar - inline, not fixed */}
         <CalendarSidebar
           isOpen={sidebarOpen}

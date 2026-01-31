@@ -15,7 +15,7 @@ type ChatPopupProps = {
 };
 
 export default function ChatPopup({ sidebarOpen = false, isMobile = false }: ChatPopupProps) {
-  const { triggerRefresh, theme, setPendingEvents, goToDate, setScrollToTime } = useCalendar();
+  const { triggerRefresh, theme, setPendingEvents, clearPendingEvents, goToDate, setScrollToTime } = useCalendar();
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
@@ -81,18 +81,43 @@ export default function ChatPopup({ sidebarOpen = false, isMobile = false }: Cha
 
       const data = await res.json();
 
-      if (data.pendingEvents && Array.isArray(data.pendingEvents)) {
-        setPendingEvents((prev: PendingEvent[]) => [...prev, ...data.pendingEvents]);
-        if (data.pendingEvents.length > 0) {
-          const eventDate = new Date(data.pendingEvents[0].startDateTime);
-          // Navigate to the week containing the event
-          if (goToDate) {
-            goToDate(eventDate);
+      // Check if AI wants to clear pending events (e.g., user said "cancel", "nevermind")
+      if (data.clearPendingEvents === true) {
+        clearPendingEvents();
+      }
+
+      if (data.pendingEvents && Array.isArray(data.pendingEvents) && data.pendingEvents.length > 0) {
+        // Validate and filter pending events to ensure they have required fields
+        const validEvents = data.pendingEvents.filter((event: PendingEvent) => {
+          if (!event.id || !event.startDateTime || !event.endDateTime) {
+            console.warn("Invalid pending event from API:", event);
+            return false;
           }
-          // Scroll to the time of day (with a small delay to let the week navigation complete)
+          return true;
+        });
+
+        if (validEvents.length > 0) {
+          // Set pending events first
+          setPendingEvents((prev: PendingEvent[]) => [...prev, ...validEvents]);
+
+          const eventDate = new Date(validEvents[0].startDateTime);
+          const eventHour = eventDate.getHours();
+
+          // Auto-collapse chat if event is in the evening (after 6pm) to not block the view
+          if (eventHour >= 18) {
+            setTimeout(() => setIsExpanded(false), 300);
+          }
+
+          // Navigate to the week containing the event (with small delay for state to settle)
           setTimeout(() => {
-            setScrollToTime(eventDate);
-          }, 100);
+            if (goToDate) {
+              goToDate(eventDate);
+            }
+            // Scroll to the time of day
+            setTimeout(() => {
+              setScrollToTime(eventDate);
+            }, 150);
+          }, 50);
         }
       }
 
@@ -111,7 +136,7 @@ export default function ChatPopup({ sidebarOpen = false, isMobile = false }: Cha
     } finally {
       setLoading(false);
     }
-  }, [input, loading, messages, setPendingEvents, goToDate, setScrollToTime, triggerRefresh]);
+  }, [input, loading, messages, setPendingEvents, clearPendingEvents, goToDate, setScrollToTime, triggerRefresh]);
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && !e.shiftKey) {
@@ -156,29 +181,39 @@ export default function ChatPopup({ sidebarOpen = false, isMobile = false }: Cha
       >
         {/* Messages area - collapsible */}
         {hasMessages && isExpanded && (
-          <div
-            ref={scrollRef}
-            className="max-h-[40vh] space-y-2 overflow-y-auto p-3 pb-0"
-          >
-            {/* Collapse button at top left */}
-            <button
-              type="button"
-              onClick={() => setIsExpanded(false)}
+          <div className="relative max-h-[40vh] overflow-hidden flex flex-col">
+            {/* Sticky collapse button at top */}
+            <div
               className={cn(
-                "flex h-8 w-8 shrink-0 items-center justify-center rounded-full transition-all mb-2",
-                isDark ? "text-white/50 hover:text-white hover:bg-white/10" : "text-black/50 hover:text-black hover:bg-black/5"
+                "sticky top-0 z-10 px-3 pt-2 pb-1",
+                isDark ? "bg-black/40" : "bg-white/40"
               )}
-              title="Collapse chat"
+              style={{ backdropFilter: "blur(12px)" }}
             >
-              <svg
-                className="h-4 w-4 rotate-180"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
+              <button
+                type="button"
+                onClick={() => setIsExpanded(false)}
+                className={cn(
+                  "flex h-8 w-8 shrink-0 items-center justify-center rounded-full transition-all cursor-pointer",
+                  isDark ? "text-white/50 hover:text-white hover:bg-white/10" : "text-black/50 hover:text-black hover:bg-black/5"
+                )}
+                title="Collapse chat"
               >
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
-              </svg>
-            </button>
+                <svg
+                  className="h-4 w-4 rotate-180"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
+                </svg>
+              </button>
+            </div>
+            {/* Scrollable messages */}
+            <div
+              ref={scrollRef}
+              className="flex-1 overflow-y-auto space-y-2 px-3 pb-2"
+            >
             {messages.map((msg, i) => (
               <div
                 key={i}
@@ -220,6 +255,7 @@ export default function ChatPopup({ sidebarOpen = false, isMobile = false }: Cha
                 </div>
               </div>
             )}
+            </div>
           </div>
         )}
 
@@ -252,7 +288,7 @@ export default function ChatPopup({ sidebarOpen = false, isMobile = false }: Cha
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={handleKeyDown}
-              placeholder="Ask Docket anything..."
+              placeholder={messages.length > 0 && !isExpanded ? "Continue conversation..." : "Ask Docket anything..."}
               disabled={loading}
               rows={1}
               className={cn(

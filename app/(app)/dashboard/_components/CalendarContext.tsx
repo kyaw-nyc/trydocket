@@ -1,6 +1,8 @@
 "use client";
 
-import { createContext, useContext, useState, useCallback, ReactNode } from "react";
+import { createContext, useContext, useState, useCallback, useEffect, ReactNode } from "react";
+
+const THEME_STORAGE_KEY = "docket:theme";
 
 export type PendingEvent = {
   id: string;
@@ -37,11 +39,33 @@ const CalendarContext = createContext<CalendarContextType | null>(null);
 
 export function CalendarProvider({ children }: { children: ReactNode }) {
   const [refreshKey, setRefreshKey] = useState(0);
-  const [theme, setTheme] = useState<"light" | "dark">("light");
+  const [theme, setThemeState] = useState<"light" | "dark">("light");
   const [pendingEvents, setPendingEvents] = useState<PendingEvent[]>([]);
   const [isConfirming, setIsConfirming] = useState(false);
   const [goToDateFn, setGoToDateFn] = useState<GoToDateFn | null>(null);
   const [scrollToTime, setScrollToTime] = useState<Date | null>(null);
+
+  // Restore theme from localStorage on mount
+  useEffect(() => {
+    try {
+      const savedTheme = localStorage.getItem(THEME_STORAGE_KEY);
+      if (savedTheme === "dark" || savedTheme === "light") {
+        setThemeState(savedTheme);
+      }
+    } catch {
+      // Ignore localStorage errors
+    }
+  }, []);
+
+  // Wrapper to save theme to localStorage when it changes
+  const setTheme = useCallback((newTheme: "light" | "dark") => {
+    setThemeState(newTheme);
+    try {
+      localStorage.setItem(THEME_STORAGE_KEY, newTheme);
+    } catch {
+      // Ignore localStorage errors
+    }
+  }, []);
 
   const triggerRefresh = useCallback(() => {
     setRefreshKey((k) => k + 1);
