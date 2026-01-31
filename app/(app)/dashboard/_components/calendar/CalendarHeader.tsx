@@ -48,7 +48,10 @@ function CalendarHeaderComponent({
   onToggleTheme,
 }: CalendarHeaderProps) {
   return (
-    <header className="flex items-center justify-between bg-background px-4 py-3 md:px-6">
+    <header className={cn(
+      "flex items-center justify-between px-4 py-3 md:px-6 rounded-t-xl",
+      isDark ? "bg-background" : "bg-white"
+    )}>
       <div className="flex items-center gap-2 md:gap-3">
         <Button
           variant="ghost"

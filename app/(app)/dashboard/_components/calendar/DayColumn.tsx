@@ -30,12 +30,14 @@ function DayColumnComponent({
   const today = isToday(date);
 
   return (
-    <div className="relative flex-1 border-l border-border">
+    <div className="relative flex-1 min-w-0">
+      {/* Vertical day line - full height, single element so it stays straight */}
+      <div className="absolute left-0 top-0 bottom-0 w-px bg-border z-0" aria-hidden />
       {/* Hour lines */}
       {HOURS.map((hour) => (
         <div
           key={hour}
-          className="absolute w-full border-t border-border/40"
+          className="absolute left-0 right-0 w-full border-t border-border/40 z-0"
           style={{ top: hour * HOUR_HEIGHT }}
         />
       ))}

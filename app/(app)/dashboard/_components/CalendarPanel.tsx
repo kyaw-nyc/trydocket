@@ -109,8 +109,8 @@ export default function CalendarPanel() {
 
       <PendingEventsBanner ownedCalendars={ownedCalendars} />
 
-      {/* Main content area - sidebar and calendar side by side */}
-      <div className="flex flex-1 min-h-0 bg-background">
+        {/* Main content area - sidebar and calendar side by side */}
+      <div className="flex flex-1 min-h-0 bg-background rounded-b-xl overflow-hidden">
         {/* Sidebar - inline, not fixed */}
         <CalendarSidebar
           isOpen={sidebarOpen}
@@ -123,8 +123,8 @@ export default function CalendarPanel() {
           isMobile={isMobile}
         />
 
-        {/* Calendar grid */}
-        <div className="flex flex-1 flex-col overflow-hidden">
+        {/* Calendar grid - stretch vertically a bit */}
+        <div className="flex flex-1 flex-col overflow-hidden min-h-[82vh]">
           <CalendarGrid
             weekDates={weekDates}
             timezoneAbbr={timezoneAbbr}

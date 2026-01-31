@@ -107,7 +107,7 @@ function CalendarGridComponent({
       <div ref={scrollRef} className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden px-2 sm:px-4 pb-24 md:px-6 touch-pan-y">
         <div className="relative flex" style={{ height: HOUR_HEIGHT * 24 }}>
           <TimeGutter />
-          <div className="relative flex flex-1 pl-10 sm:pl-14">
+          <div className="relative flex flex-1 min-w-0 pl-10 sm:pl-14">
             {weekDates.map((date, dayIndex) => (
               <DayColumn
                 key={date.toISOString()}

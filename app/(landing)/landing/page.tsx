@@ -1,34 +1,24 @@
 import { signIn } from "@/lib/auth";
+import { MarketingNavbar } from "@/components/marketing/layout/MarketingNavbar";
 
 export default function LandingPage() {
   return (
     <div className="min-h-screen bg-neutral-50">
-      {/* Navigation */}
-      <nav className="fixed top-0 left-0 right-0 z-50 border-b border-neutral-200 bg-neutral-50/80 backdrop-blur-sm">
-        <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-6">
-          <div className="flex items-center gap-2">
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-neutral-900">
-              <svg className="h-4 w-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-              </svg>
-            </div>
-            <span className="text-lg font-semibold text-neutral-900">Docket</span>
-          </div>
-          <form
-            action={async () => {
-              "use server";
-              await signIn("google", { redirectTo: "/dashboard" });
-            }}
+      <MarketingNavbar>
+        <form
+          action={async () => {
+            "use server";
+            await signIn("google", { redirectTo: "/dashboard" });
+          }}
+        >
+          <button
+            type="submit"
+            className="cursor-pointer rounded-full bg-neutral-900 px-6 py-3 text-[15px] font-semibold text-white transition-colors hover:bg-neutral-800"
           >
-            <button
-              type="submit"
-              className="cursor-pointer rounded-lg bg-neutral-900 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-neutral-800"
-            >
-              Sign in
-            </button>
-          </form>
-        </div>
-      </nav>
+            Sign in
+          </button>
+        </form>
+      </MarketingNavbar>
 
       {/* Hero */}
       <section className="relative pt-32 pb-20 px-6">
@@ -79,11 +69,11 @@ export default function LandingPage() {
 
       {/* Preview */}
       <section className="px-6 pb-20">
-        <div className="mx-auto max-w-6xl">
-          <div className="relative rounded-2xl border border-neutral-200 bg-white p-2 shadow-2xl shadow-neutral-300/50">
-            <div className="rounded-xl bg-white border border-neutral-100 overflow-hidden">
-              {/* Mock browser header */}
-              <div className="flex items-center gap-2 border-b border-neutral-100 px-4 py-3">
+        <div className="mx-auto max-w-[1400px] w-full">
+          <div className="relative overflow-hidden rounded-2xl bg-white shadow-lg">
+            <div className="overflow-hidden rounded-2xl bg-white">
+              {/* Mock browser header - white */}
+              <div className="flex items-center gap-2 border-b border-neutral-100 bg-white px-4 py-3 rounded-t-2xl">
                 <div className="flex gap-1.5">
                   <div className="h-3 w-3 rounded-full bg-neutral-300" />
                   <div className="h-3 w-3 rounded-full bg-neutral-300" />
@@ -91,7 +81,7 @@ export default function LandingPage() {
                 </div>
                 <div className="ml-4 flex-1">
                   <div className="mx-auto max-w-md rounded-md bg-neutral-100 px-3 py-1.5 text-xs text-neutral-400 text-center">
-                    docket.app
+                    trydocket.co
                   </div>
                 </div>
               </div>
@@ -146,8 +136,8 @@ export default function LandingPage() {
 
                 {/* Calendar grid */}
                 <div className="flex-1 p-4">
-                  {/* Header */}
-                  <div className="mb-3 flex items-center justify-between">
+                  {/* Header - white */}
+                  <div className="mb-3 flex items-center justify-between rounded-t-xl bg-white py-1">
                     <div className="text-lg font-medium text-neutral-800">January 25–31, 2026</div>
                     <div className="flex items-center gap-1">
                       <div className="h-7 w-7 rounded flex items-center justify-center hover:bg-neutral-100">
@@ -163,50 +153,59 @@ export default function LandingPage() {
                     </div>
                   </div>
 
-                  {/* Day headers */}
-                  <div className="grid grid-cols-7 border-b border-neutral-100">
-                    {[
-                      { day: 'SUN', date: '25' },
-                      { day: 'MON', date: '26' },
-                      { day: 'TUE', date: '27' },
-                      { day: 'WED', date: '28' },
-                      { day: 'THU', date: '29' },
-                      { day: 'FRI', date: '30', current: true },
-                      { day: 'SAT', date: '31' },
-                    ].map((d, i) => (
-                      <div key={i} className="py-2 text-center border-l border-neutral-100 first:border-l-0">
-                        <div className="text-[10px] text-neutral-400 font-medium">{d.day}</div>
-                        <div className={`text-lg font-medium mt-0.5 ${d.current ? 'w-8 h-8 rounded-full bg-neutral-900 text-white flex items-center justify-center mx-auto' : 'text-neutral-700'}`}>
-                          {d.date}
+                  {/* Day headers - same grid as time grid so vertical lines align */}
+                  <div className="flex border-b border-neutral-100">
+                    <div className="w-12 flex-shrink-0" />
+                    <div className="flex flex-1">
+                      {[
+                        { day: 'SUN', date: '25' },
+                        { day: 'MON', date: '26' },
+                        { day: 'TUE', date: '27' },
+                        { day: 'WED', date: '28' },
+                        { day: 'THU', date: '29' },
+                        { day: 'FRI', date: '30', current: true },
+                        { day: 'SAT', date: '31' },
+                      ].map((d, i) => (
+                        <div key={i} className="flex-1 py-2 text-center border-l border-neutral-100 first:border-l-0">
+                          <div className="text-[10px] text-neutral-400 font-medium">{d.day}</div>
+                          <div className={`text-lg font-medium mt-0.5 ${d.current ? 'w-8 h-8 rounded-full bg-neutral-900 text-white flex items-center justify-center mx-auto' : 'text-neutral-700'}`}>
+                            {d.date}
+                          </div>
                         </div>
-                      </div>
-                    ))}
+                      ))}
+                    </div>
                   </div>
 
-                  {/* Time grid */}
-                  <div className="relative">
-                    {/* Time labels */}
-                    <div className="absolute left-0 top-0 w-12 text-[10px] text-neutral-400">
-                      {['10 AM', '11 AM', '12 PM', '1 PM', '2 PM', '3 PM', '4 PM'].map((t, i) => (
+                  {/* Time grid - vertical day lines run full height */}
+                  <div className="relative flex">
+                    {/* Time labels - 11 rows for taller grid */}
+                    <div className="w-12 flex-shrink-0 text-[10px] text-neutral-400">
+                      {['10 AM', '11 AM', '12 PM', '1 PM', '2 PM', '3 PM', '4 PM', '5 PM', '6 PM', '7 PM', '8 PM'].map((t, i) => (
                         <div key={i} className="h-12 flex items-start justify-end pr-2 -mt-1.5">{t}</div>
                       ))}
                     </div>
 
-                    {/* Grid columns */}
-                    <div className="ml-12 grid grid-cols-7">
+                    {/* Grid columns - straight vertical borders, stretched vertically */}
+                    <div className="flex flex-1 border-l border-neutral-100" style={{ minHeight: 528 }}>
                       {Array.from({ length: 7 }).map((_, colIndex) => (
-                        <div key={colIndex} className="relative border-l border-neutral-100 first:border-l-0">
-                          {/* Hour lines */}
-                          {Array.from({ length: 7 }).map((_, rowIndex) => (
-                            <div key={rowIndex} className="h-12 border-b border-neutral-50" />
+                        <div key={colIndex} className="relative flex-1 border-l border-neutral-100 first:border-l-0 min-h-[528px]">
+                          {/* Hour lines - 11 rows */}
+                          {Array.from({ length: 11 }).map((_, rowIndex) => (
+                            <div key={rowIndex} className="absolute left-0 right-0 h-12 border-b border-neutral-50" style={{ top: rowIndex * 48 }} />
                           ))}
 
                           {/* Events */}
                           {colIndex === 0 && (
-                            <div className="absolute left-1 right-1 top-[12px] h-[36px] rounded bg-cyan-100 border-l-2 border-cyan-500 px-1.5 py-0.5 overflow-hidden">
-                              <div className="text-[10px] font-medium text-cyan-800 truncate">COS217</div>
-                              <div className="text-[9px] text-cyan-600 truncate">10:40 AM</div>
-                            </div>
+                            <>
+                              <div className="absolute left-1 right-1 top-[12px] h-[36px] rounded bg-cyan-100 border-l-2 border-cyan-500 px-1.5 py-0.5 overflow-hidden">
+                                <div className="text-[10px] font-medium text-cyan-800 truncate">COS217</div>
+                                <div className="text-[9px] text-cyan-600 truncate">10:40 AM</div>
+                              </div>
+                              <div className="absolute left-1 right-1 top-[336px] h-[36px] rounded bg-sky-100 border-l-2 border-sky-500 px-1.5 py-0.5 overflow-hidden">
+                                <div className="text-[10px] font-medium text-sky-800 truncate">Study group</div>
+                                <div className="text-[9px] text-sky-600 truncate">5:00 PM</div>
+                              </div>
+                            </>
                           )}
                           {colIndex === 1 && (
                             <>
@@ -217,6 +216,14 @@ export default function LandingPage() {
                               <div className="absolute left-1 right-1 top-[72px] h-[36px] rounded bg-purple-100 border-l-2 border-purple-500 px-1.5 py-0.5 overflow-hidden">
                                 <div className="text-[10px] font-medium text-purple-800 truncate">REL235</div>
                                 <div className="text-[9px] text-purple-600 truncate">12:15 PM</div>
+                              </div>
+                              <div className="absolute left-1 right-1 top-[288px] h-[36px] rounded bg-rose-100 border-l-2 border-rose-400 px-1.5 py-0.5 overflow-hidden">
+                                <div className="text-[10px] font-medium text-rose-800 truncate">Office hours</div>
+                                <div className="text-[9px] text-rose-600 truncate">4:00 PM</div>
+                              </div>
+                              <div className="absolute left-1 right-1 top-[432px] h-[48px] rounded bg-amber-100 border-l-2 border-amber-500 px-1.5 py-0.5 overflow-hidden">
+                                <div className="text-[10px] font-medium text-amber-800 truncate">Dinner</div>
+                                <div className="text-[9px] text-amber-600 truncate">7:00 PM</div>
                               </div>
                             </>
                           )}
@@ -234,13 +241,31 @@ export default function LandingPage() {
                                 <div className="text-[10px] font-medium text-green-800 truncate">Lunch</div>
                                 <div className="text-[9px] text-green-600 truncate">2:00 PM</div>
                               </div>
+                              <div className="absolute left-1 right-1 top-[336px] h-[36px] rounded bg-indigo-100 border-l-2 border-indigo-500 px-1.5 py-0.5 overflow-hidden">
+                                <div className="text-[10px] font-medium text-indigo-800 truncate">Podcast</div>
+                                <div className="text-[9px] text-indigo-600 truncate">5:00 PM</div>
+                              </div>
+                              <div className="absolute left-1 right-1 top-[432px] h-[36px] rounded bg-slate-100 border-l-2 border-slate-500 px-1.5 py-0.5 overflow-hidden">
+                                <div className="text-[10px] font-medium text-slate-800 truncate">Reading</div>
+                                <div className="text-[9px] text-slate-600 truncate">7:00 PM</div>
+                              </div>
                             </>
                           )}
                           {colIndex === 3 && (
-                            <div className="absolute left-1 right-1 top-[168px] h-[48px] rounded bg-amber-100 border-l-2 border-amber-500 px-1.5 py-0.5 overflow-hidden">
-                              <div className="text-[10px] font-medium text-amber-800 truncate">Team sync</div>
-                              <div className="text-[9px] text-amber-600 truncate">3:00 PM</div>
-                            </div>
+                            <>
+                              <div className="absolute left-1 right-1 top-[168px] h-[48px] rounded bg-amber-100 border-l-2 border-amber-500 px-1.5 py-0.5 overflow-hidden">
+                                <div className="text-[10px] font-medium text-amber-800 truncate">Team sync</div>
+                                <div className="text-[9px] text-amber-600 truncate">3:00 PM</div>
+                              </div>
+                              <div className="absolute left-1 right-1 top-[336px] h-[36px] rounded bg-teal-100 border-l-2 border-teal-500 px-1.5 py-0.5 overflow-hidden">
+                                <div className="text-[10px] font-medium text-teal-800 truncate">Coffee chat</div>
+                                <div className="text-[9px] text-teal-600 truncate">5:00 PM</div>
+                              </div>
+                              <div className="absolute left-1 right-1 top-[480px] h-[36px] rounded bg-pink-100 border-l-2 border-pink-400 px-1.5 py-0.5 overflow-hidden">
+                                <div className="text-[10px] font-medium text-pink-800 truncate">Movie night</div>
+                                <div className="text-[9px] text-pink-600 truncate">8:00 PM</div>
+                              </div>
+                            </>
                           )}
                           {colIndex === 4 && (
                             <>
@@ -251,6 +276,14 @@ export default function LandingPage() {
                               <div className="absolute left-1 right-1 top-[120px] h-[36px] rounded bg-cyan-100 border-l-2 border-cyan-500 px-1.5 py-0.5 overflow-hidden">
                                 <div className="text-[10px] font-medium text-cyan-800 truncate">COS217</div>
                                 <div className="text-[9px] text-cyan-600 truncate">2:00 PM</div>
+                              </div>
+                              <div className="absolute left-1 right-1 top-[336px] h-[36px] rounded bg-emerald-100 border-l-2 border-emerald-500 px-1.5 py-0.5 overflow-hidden">
+                                <div className="text-[10px] font-medium text-emerald-800 truncate">Review</div>
+                                <div className="text-[9px] text-emerald-600 truncate">5:00 PM</div>
+                              </div>
+                              <div className="absolute left-1 right-1 top-[432px] h-[36px] rounded bg-violet-100 border-l-2 border-violet-500 px-1.5 py-0.5 overflow-hidden">
+                                <div className="text-[10px] font-medium text-violet-800 truncate">Call Mom</div>
+                                <div className="text-[9px] text-violet-600 truncate">7:00 PM</div>
                               </div>
                             </>
                           )}
@@ -264,13 +297,35 @@ export default function LandingPage() {
                                 <div className="text-[10px] font-medium text-green-800 truncate">Gym</div>
                                 <div className="text-[9px] text-green-600 truncate">3:00 PM</div>
                               </div>
+                              <div className="absolute left-1 right-1 top-[336px] h-[36px] rounded bg-orange-100 border-l-2 border-orange-500 px-1.5 py-0.5 overflow-hidden">
+                                <div className="text-[10px] font-medium text-orange-800 truncate">Happy hour</div>
+                                <div className="text-[9px] text-orange-600 truncate">5:00 PM</div>
+                              </div>
+                              <div className="absolute left-1 right-1 top-[432px] h-[48px] rounded bg-rose-100 border-l-2 border-rose-400 px-1.5 py-0.5 overflow-hidden">
+                                <div className="text-[10px] font-medium text-rose-800 truncate">Dinner out</div>
+                                <div className="text-[9px] text-rose-600 truncate">7:00 PM</div>
+                              </div>
                             </>
                           )}
                           {colIndex === 6 && (
-                            <div className="absolute left-1 right-1 top-[168px] h-[48px] rounded bg-red-100 border-l-2 border-red-400 px-1.5 py-0.5 overflow-hidden">
-                              <div className="text-[10px] font-medium text-red-800 truncate">Project due</div>
-                              <div className="text-[9px] text-red-600 truncate">3:00 PM</div>
-                            </div>
+                            <>
+                              <div className="absolute left-1 right-1 top-[12px] h-[36px] rounded bg-lime-100 border-l-2 border-lime-500 px-1.5 py-0.5 overflow-hidden">
+                                <div className="text-[10px] font-medium text-lime-800 truncate">Yoga</div>
+                                <div className="text-[9px] text-lime-600 truncate">10:00 AM</div>
+                              </div>
+                              <div className="absolute left-1 right-1 top-[120px] h-[36px] rounded bg-blue-100 border-l-2 border-blue-500 px-1.5 py-0.5 overflow-hidden">
+                                <div className="text-[10px] font-medium text-blue-800 truncate">Grocery</div>
+                                <div className="text-[9px] text-blue-600 truncate">2:00 PM</div>
+                              </div>
+                              <div className="absolute left-1 right-1 top-[168px] h-[48px] rounded bg-red-100 border-l-2 border-red-400 px-1.5 py-0.5 overflow-hidden">
+                                <div className="text-[10px] font-medium text-red-800 truncate">Project due</div>
+                                <div className="text-[9px] text-red-600 truncate">3:00 PM</div>
+                              </div>
+                              <div className="absolute left-1 right-1 top-[432px] h-[48px] rounded bg-fuchsia-100 border-l-2 border-fuchsia-500 px-1.5 py-0.5 overflow-hidden">
+                                <div className="text-[10px] font-medium text-fuchsia-800 truncate">Game night</div>
+                                <div className="text-[9px] text-fuchsia-600 truncate">7:00 PM</div>
+                              </div>
+                            </>
                           )}
                         </div>
                       ))}
@@ -278,93 +333,23 @@ export default function LandingPage() {
                   </div>
                 </div>
 
-                {/* Chat popup mock */}
-                <div className="absolute bottom-4 right-4 w-72 rounded-xl border border-neutral-200 bg-white shadow-xl hidden sm:block">
-                  <div className="border-b border-neutral-100 p-3">
-                    <div className="flex items-center gap-2">
-                      <div className="flex h-7 w-7 items-center justify-center rounded-full bg-neutral-900">
-                        <svg className="h-3.5 w-3.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
-                        </svg>
-                      </div>
-                      <div>
-                        <div className="text-xs font-medium text-neutral-900">Docket AI</div>
-                        <div className="text-[10px] text-neutral-400">Calendar assistant</div>
-                      </div>
-                    </div>
-                  </div>
-                  <div className="p-3 space-y-2">
-                    <div className="rounded-lg bg-neutral-900 px-3 py-2 text-xs text-white max-w-[85%] ml-auto">
-                      Schedule 30min with Sarah tomorrow at 11:30am
-                    </div>
-                    <div className="rounded-lg bg-neutral-100 px-3 py-2 text-xs text-neutral-700 max-w-[85%]">
-                      Done! I've added "Meet with Sarah" on Thursday at 11:30 AM.
-                    </div>
-                  </div>
-                  <div className="border-t border-neutral-100 p-2">
-                    <div className="flex gap-2">
-                      <div className="flex-1 rounded-lg border border-neutral-200 px-3 py-2 text-xs text-neutral-400">
-                        Ask Docket anything...
-                      </div>
-                      <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-neutral-900 cursor-pointer">
-                        <svg className="h-3.5 w-3.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
-                        </svg>
-                      </div>
+                {/* Centered chatbox - middle of calendar area */}
+                <div className="absolute left-1/2 bottom-6 -translate-x-1/2 w-full max-w-xl px-4 pointer-events-none">
+                  <div className="pointer-events-auto flex items-end gap-3 rounded-2xl px-4 py-3 bg-white/90 backdrop-blur-md shadow-lg border border-neutral-200/80">
+                    <input
+                      type="text"
+                      readOnly
+                      placeholder="Ask Docket anything..."
+                      className="flex-1 min-h-[24px] bg-transparent text-sm text-neutral-500 outline-none placeholder-neutral-400"
+                    />
+                    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-neutral-900">
+                      <svg className="h-3.5 w-3.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+                      </svg>
                     </div>
                   </div>
                 </div>
               </div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* Features */}
-      <section className="border-t border-neutral-200 py-20 px-6">
-        <div className="mx-auto max-w-5xl">
-          <h2 className="text-center text-2xl font-semibold text-neutral-900">
-            Simple. Fast. Natural.
-          </h2>
-          <p className="mt-3 text-center text-neutral-500">
-            Managing your calendar shouldn't be a chore.
-          </p>
-
-          <div className="mt-16 grid gap-8 sm:grid-cols-3">
-            <div className="text-center">
-              <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-xl bg-white border border-neutral-200">
-                <svg className="h-5 w-5 text-neutral-700" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
-                </svg>
-              </div>
-              <h3 className="mt-4 text-base font-medium text-neutral-900">Natural language</h3>
-              <p className="mt-2 text-sm text-neutral-500 leading-relaxed">
-                Just type what you want. "Add lunch with Tom on Friday" works perfectly.
-              </p>
-            </div>
-
-            <div className="text-center">
-              <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-xl bg-white border border-neutral-200">
-                <svg className="h-5 w-5 text-neutral-700" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-              </div>
-              <h3 className="mt-4 text-base font-medium text-neutral-900">Conflict detection</h3>
-              <p className="mt-2 text-sm text-neutral-500 leading-relaxed">
-                Docket checks your schedule and warns you about overlapping events.
-              </p>
-            </div>
-
-            <div className="text-center">
-              <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-xl bg-white border border-neutral-200">
-                <svg className="h-5 w-5 text-neutral-700" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
-                </svg>
-              </div>
-              <h3 className="mt-4 text-base font-medium text-neutral-900">Preview first</h3>
-              <p className="mt-2 text-sm text-neutral-500 leading-relaxed">
-                See proposed events before they're added. You're always in control.
-              </p>
             </div>
           </div>
         </div>
@@ -399,20 +384,59 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* Footer */}
-      <footer className="border-t border-neutral-200 py-8 px-6">
-        <div className="mx-auto max-w-5xl flex flex-col sm:flex-row items-center justify-between gap-4">
-          <div className="flex items-center gap-2">
-            <div className="flex h-6 w-6 items-center justify-center rounded bg-neutral-900">
-              <svg className="h-3 w-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-              </svg>
+      {/* Footer - same background as CTA section above (neutral-50) */}
+      <footer className="relative w-full overflow-hidden bg-neutral-50">
+        <div className="relative z-10 mx-auto max-w-[1200px] px-6 pt-24 md:pt-32 pb-16 md:pb-24">
+          <div className="bg-neutral-900 rounded-3xl p-8 md:p-12 shadow-lg border border-neutral-700/50">
+            <div className="flex flex-col gap-16 md:gap-24">
+              <div className="grid grid-cols-1 md:grid-cols-12 gap-8 md:gap-12">
+                <div className="md:col-span-3 flex flex-col gap-4">
+                  <div className="flex items-center gap-2 text-base font-semibold tracking-[0.08em] text-white">
+                    <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-white">
+                      <svg className="h-4 w-4 text-neutral-900" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                      </svg>
+                    </div>
+                    TRYDOCKET
+                  </div>
+                  <p className="text-sm text-white/70">
+                    Manage your Google Calendar with AI. Schedule, update, and organize events using natural language.
+                  </p>
+                </div>
+                <div className="md:col-span-9 grid grid-cols-2 md:grid-cols-3 gap-8">
+                  <div className="flex flex-col gap-4">
+                    <h3 className="text-sm font-semibold uppercase tracking-wider text-white">Product</h3>
+                    <div className="flex flex-col gap-3">
+                      <a href="/landing" className="text-sm text-white/70 hover:text-white transition-colors">How it works</a>
+                    </div>
+                  </div>
+                  <div className="flex flex-col gap-4">
+                    <h3 className="text-sm font-semibold uppercase tracking-wider text-white">Company</h3>
+                    <div className="flex flex-col gap-3">
+                      <a href="/landing" className="text-sm text-white/70 hover:text-white transition-colors">About</a>
+                      <a href="/landing" className="text-sm text-white/70 hover:text-white transition-colors">Contact</a>
+                    </div>
+                  </div>
+                  <div className="flex flex-col gap-4">
+                    <h3 className="text-sm font-semibold uppercase tracking-wider text-white">Get Started</h3>
+                    <div className="flex flex-col gap-3">
+                      <a href="/landing" className="text-sm text-white/70 hover:text-white transition-colors">Sign In</a>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div className="flex flex-col gap-8">
+                <div className="h-[1px] bg-white/20 w-full" />
+                <div className="flex flex-col md:flex-row items-center justify-between gap-4 text-sm text-white/70">
+                  <p>© {new Date().getFullYear()} Trydocket. All rights reserved.</p>
+                  <div className="flex gap-6">
+                    <a href="/landing" className="hover:text-white transition-colors">Privacy Policy</a>
+                    <a href="/landing" className="hover:text-white transition-colors">Terms of Service</a>
+                  </div>
+                </div>
+              </div>
             </div>
-            <span className="text-sm font-medium text-neutral-900">Docket</span>
           </div>
-          <p className="text-sm text-neutral-400">
-            Built for people who value their time.
-          </p>
         </div>
       </footer>
     </div>
