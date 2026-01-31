@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useEffect, useMemo } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { useCalendar } from "./CalendarContext";
 import { CalendarEvent } from "./types/calendar";
 import { useCalendarNavigation } from "./hooks/useCalendarNavigation";
@@ -9,7 +9,6 @@ import {
   CalendarHeader,
   CalendarSidebar,
   CalendarGrid,
-  PendingEventsBanner,
 } from "./calendar";
 import { EventDetailsSheet } from "./events";
 import ChatPopup from "./ChatPopup";
@@ -68,11 +67,6 @@ export default function CalendarPanel() {
     setGoToDate(goToDate);
   }, [goToDate, setGoToDate]);
 
-  // Get owned calendars for PendingEventsBanner
-  const ownedCalendars = useMemo(
-    () => calendarLegend.filter((c) => c.isOwned && c.id !== "preview"),
-    [calendarLegend]
-  );
 
   const handleToggleSidebar = useCallback(() => {
     setSidebarOpen((v) => !v);
@@ -107,9 +101,7 @@ export default function CalendarPanel() {
         onToggleTheme={handleToggleTheme}
       />
 
-      <PendingEventsBanner ownedCalendars={ownedCalendars} />
-
-        {/* Main content area - sidebar and calendar side by side */}
+      {/* Main content area - sidebar and calendar side by side */}
       <div className="flex flex-1 min-h-0 bg-background rounded-b-xl overflow-hidden">
         {/* Sidebar - inline, not fixed */}
         <CalendarSidebar

@@ -29,6 +29,8 @@ type CalendarContextType = {
   isConfirming: boolean;
   goToDate: GoToDateFn | null;
   setGoToDate: (fn: GoToDateFn) => void;
+  scrollToTime: Date | null;
+  setScrollToTime: (time: Date | null) => void;
 };
 
 const CalendarContext = createContext<CalendarContextType | null>(null);
@@ -39,6 +41,7 @@ export function CalendarProvider({ children }: { children: ReactNode }) {
   const [pendingEvents, setPendingEvents] = useState<PendingEvent[]>([]);
   const [isConfirming, setIsConfirming] = useState(false);
   const [goToDateFn, setGoToDateFn] = useState<GoToDateFn | null>(null);
+  const [scrollToTime, setScrollToTime] = useState<Date | null>(null);
 
   const triggerRefresh = useCallback(() => {
     setRefreshKey((k) => k + 1);
@@ -93,6 +96,8 @@ export function CalendarProvider({ children }: { children: ReactNode }) {
         isConfirming,
         goToDate: goToDateFn,
         setGoToDate,
+        scrollToTime,
+        setScrollToTime,
       }}
     >
       {children}

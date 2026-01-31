@@ -5,6 +5,7 @@ import { CalendarEvent, ColorsMap, HOUR_HEIGHT } from "../types/calendar";
 import { formatDateHeader, isToday, getCurrentTimePosition } from "../utils/date-utils";
 import { TimeGutter } from "./TimeGutter";
 import { DayColumn } from "./DayColumn";
+import { useCalendar } from "../CalendarContext";
 import { cn } from "@/lib/utils";
 
 type CalendarGridProps = {
@@ -30,6 +31,7 @@ function CalendarGridComponent({
   const [currentTimePos, setCurrentTimePos] = useState(getCurrentTimePosition());
   const [isTransitioning, setIsTransitioning] = useState(false);
   const prevWeekKeyRef = useRef<string>("");
+  const { scrollToTime, setScrollToTime } = useCalendar();
 
   // Create a unique key for the current week
   const weekKey = useMemo(() => {
@@ -64,6 +66,27 @@ function CalendarGridComponent({
       scrollRef.current.scrollTop = 8 * HOUR_HEIGHT;
     }
   }, []);
+
+  // Scroll to specific time when scrollToTime changes (e.g., when chat proposes an event)
+  useEffect(() => {
+    if (scrollToTime && scrollRef.current) {
+      const hour = scrollToTime.getHours();
+      const minutes = scrollToTime.getMinutes();
+      // Calculate scroll position: hour + fraction of hour from minutes
+      // Subtract 1 hour worth of padding so the event isn't at the very top
+      const targetHour = Math.max(0, hour + minutes / 60 - 1);
+      const scrollPosition = targetHour * HOUR_HEIGHT;
+
+      // Smooth scroll to the target time
+      scrollRef.current.scrollTo({
+        top: scrollPosition,
+        behavior: "smooth",
+      });
+
+      // Clear the scrollToTime after scrolling
+      setScrollToTime(null);
+    }
+  }, [scrollToTime, setScrollToTime]);
 
   return (
     <div
