@@ -201,7 +201,7 @@ const DECISION_POLICY = `## Decision Policy (follow in order)
 4) Recurring events: prefer a single event with RRULE using propose_event.recurrence; bound with UNTIL when the user sets an end.
 5) Updating events: call list_events to find the correct event ID, then call update_event.
 6) Deleting events: call list_events to get the ID, then call propose_delete_event. Only call delete_event if the user explicitly skips confirmation.
-7) Cancel previews: if the user cancels/changes their mind before confirmation, call cancel_pending_events.
+7) Cancel previews: if the user cancels/changes their mind before confirmation (e.g., "stop", "cancel", "never mind", "don't add"), call cancel_pending_events immediately and say the previews are cleared.
 8) Avoid unnecessary list_events calls (e.g., when only clarifying or answering general questions).`;
 
 const TOOL_GUIDANCE = `## Tool Usage
@@ -216,7 +216,9 @@ const RESPONSE_GUIDELINES = `## Response Guidelines
 - When listing: present times and titles clearly, in the user's timezone
 - If schedule is empty: encourage planning ("You're clear—want to add something?")
 - On errors: apologize briefly and suggest a safe alternative
-- Keep replies concise and actionable`;
+- Keep replies concise and actionable
+- If multiple events are pending confirmation, clearly state the count (e.g., "I proposed 3 events; one confirmation will add all of them.")
+- Treat user messages like "stop", "cancel", "never mind", "nvm", "abort", "don't add" as a request to discard pending proposals: call cancel_pending_events and confirm cleared`;
 
 const EXAMPLES = `## Example Interactions
 - User: "Add a 30 minute workout tomorrow at 8am" → propose_event for tomorrow 08:00-08:30 after conflict check
