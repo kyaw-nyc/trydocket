@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { useCalendar, PendingEvent, PendingDeletion } from "./CalendarContext";
 import { cn } from "@/lib/utils";
 
@@ -22,8 +22,19 @@ export default function ChatPopup({ sidebarOpen = false, isMobile = false }: Cha
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [isExpanded, setIsExpanded] = useState(true);
+  const [slot, setSlot] = useState<"left" | "center" | "right">("center");
+  const [isDragging, setIsDragging] = useState(false);
+  const [dragOffset, setDragOffset] = useState(0);
+  const [viewportWidth, setViewportWidth] = useState<number>(typeof window !== "undefined" ? window.innerWidth : 1280);
+  const [popupWidth, setPopupWidth] = useState<number>(640);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const popupRef = useRef<HTMLDivElement>(null);
+  const dragStateRef = useRef<{ startX: number; slotAtStart: "left" | "center" | "right"; dragging: boolean }>({
+    startX: 0,
+    slotAtStart: "center",
+    dragging: false,
+  });
 
   const isDark = theme === "dark";
 
@@ -43,6 +54,26 @@ export default function ChatPopup({ sidebarOpen = false, isMobile = false }: Cha
     }
   }, [input]);
 
+  // Track viewport width to clamp horizontal travel
+  useEffect(() => {
+    const handleResize = () => setViewportWidth(window.innerWidth);
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
+
+  // Measure popup width for accurate boundary clamping
+  useEffect(() => {
+    if (!popupRef.current) return;
+    const observer = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        const width = entry.contentRect.width;
+        if (width > 0) setPopupWidth(width);
+      }
+    });
+    observer.observe(popupRef.current);
+    return () => observer.disconnect();
+  }, []);
+
   const getUserTimezone = () => {
     try {
       return Intl.DateTimeFormat().resolvedOptions().timeZone;
@@ -50,6 +81,51 @@ export default function ChatPopup({ sidebarOpen = false, isMobile = false }: Cha
       return "America/Los_Angeles";
     }
   };
+
+  // Manage draggable snap slots (left, center, right) while avoiding the sidebar
+  const allowedSlots = useMemo<("left" | "center" | "right")[]>(() => {
+    if (isMobile) return ["center"];
+    return ["left", "center", "right"]; // allow left even when sidebar is open; clamping handles overlap
+  }, [isMobile]);
+
+  useEffect(() => {
+    if (!allowedSlots.includes(slot)) {
+      setSlot(allowedSlots[0] ?? "center");
+    }
+  }, [allowedSlots, slot]);
+
+  const baseCenterShift = !isMobile && sidebarOpen ? 128 : 0;
+
+  const edgePadding = 0; // minimal gap; user wants max reach
+  const rightLimit = useMemo(() => {
+    const halfViewport = viewportWidth / 2;
+    const halfPopup = popupWidth / 2;
+    return Math.max(0, halfViewport - halfPopup - edgePadding);
+  }, [viewportWidth, popupWidth]);
+
+  const leftLimit = useMemo(() => {
+    const halfViewport = viewportWidth / 2;
+    const halfPopup = popupWidth / 2;
+    // When sidebar is open, give more space on the left by shifting the min bound rightward
+    return -Math.max(0, halfViewport - halfPopup - edgePadding) + baseCenterShift;
+  }, [viewportWidth, popupWidth, baseCenterShift]);
+
+  const slotOffsets = useMemo<Record<"left" | "center" | "right", number>>(
+    () => ({
+      left: leftLimit,
+      center: 0,
+      right: rightLimit,
+    }),
+    [leftLimit, rightLimit]
+  );
+
+  const clampBounds = useMemo(
+    () => ({
+      min: leftLimit,
+      max: rightLimit,
+    }),
+    [leftLimit, rightLimit]
+  );
 
   const handleSubmit = useCallback(async (e: React.FormEvent) => {
     e.preventDefault();
@@ -215,14 +291,64 @@ export default function ChatPopup({ sidebarOpen = false, isMobile = false }: Cha
     }
   }, [input, loading, messages, pendingEvents, pendingDeletions, setPendingEvents, clearPendingEvents, clearPendingDeletions, setPendingDeletions, goToDate, setScrollToTime, triggerRefresh]);
 
+  const handleDragPointerDown = (e: React.PointerEvent<HTMLButtonElement>) => {
+    if (isMobile) return; // disable drag on mobile to avoid conflicts
+    dragStateRef.current = {
+      startX: e.clientX,
+      slotAtStart: slot,
+      dragging: true,
+    };
+    setIsDragging(true);
+
+    const handleMove = (ev: PointerEvent) => {
+      if (!dragStateRef.current.dragging) return;
+      ev.preventDefault();
+      const deltaX = ev.clientX - dragStateRef.current.startX;
+
+      const baseSlotOffset = slotOffsets[dragStateRef.current.slotAtStart] + baseCenterShift;
+      const unclamped = baseSlotOffset + deltaX;
+      const clamped = Math.min(clampBounds.max, Math.max(clampBounds.min, unclamped));
+      setDragOffset(clamped - baseSlotOffset);
+    };
+
+    const handleUp = (ev: PointerEvent) => {
+      if (!dragStateRef.current.dragging) return;
+      const deltaX = ev.clientX - dragStateRef.current.startX;
+      const threshold = 30;
+      let direction: "left" | "right" | "stay" = "stay";
+      if (deltaX > threshold) direction = "right";
+      if (deltaX < -threshold) direction = "left";
+
+      const order: ("left" | "center" | "right")[] = ["left", "center", "right"];
+      const currentIndex = order.indexOf(dragStateRef.current.slotAtStart);
+
+      const nextSlot = (() => {
+        if (direction === "stay") return dragStateRef.current.slotAtStart;
+        const step = direction === "right" ? 1 : -1;
+        for (let i = currentIndex + step; i >= 0 && i < order.length; i += step) {
+          if (allowedSlots.includes(order[i])) return order[i];
+        }
+        return dragStateRef.current.slotAtStart;
+      })();
+
+      setSlot(nextSlot);
+      setDragOffset(0);
+      setIsDragging(false);
+      dragStateRef.current.dragging = false;
+      window.removeEventListener("pointermove", handleMove);
+      window.removeEventListener("pointerup", handleUp);
+    };
+
+    window.addEventListener("pointermove", handleMove);
+    window.addEventListener("pointerup", handleUp, { once: true });
+  };
+
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       handleSubmit(e);
     }
   };
-
-  const sidebarOffset = !isMobile && sidebarOpen ? "md:left-[calc(50%+120px)]" : "left-1/2";
 
   // Scroll to bottom when messages update
   useEffect(() => {
@@ -243,9 +369,20 @@ export default function ChatPopup({ sidebarOpen = false, isMobile = false }: Cha
   return (
     <div
       className={cn(
-        "fixed bottom-6 z-50 w-full max-w-xl -translate-x-1/2 px-4 pointer-events-none transition-[left] duration-300 ease-in-out",
-        sidebarOffset
+        "fixed bottom-6 z-50 w-full px-4 pointer-events-none transition-all duration-300 ease-in-out",
+        sidebarOpen ? "max-w-lg" : "max-w-xl"
       )}
+      style={{
+        left: "50%",
+        transform: (() => {
+          const base = slotOffsets[slot] + baseCenterShift;
+          const dynamic = base + (isDragging ? dragOffset : 0);
+          const clamped = Math.min(clampBounds.max, Math.max(clampBounds.min, dynamic));
+          return `translateX(-50%) translateX(${clamped}px)`;
+        })(),
+        transition: isDragging ? "none" : undefined,
+      }}
+      ref={popupRef}
     >
       {/* Combined chat container */}
       <div
@@ -392,6 +529,20 @@ export default function ChatPopup({ sidebarOpen = false, isMobile = false }: Cha
                 </svg>
               )}
             </button>
+            {!isMobile && (
+              <button
+                type="button"
+                aria-label="Drag chat"
+                onPointerDown={handleDragPointerDown}
+                className={cn(
+                  "relative h-8 w-3 shrink-0 flex items-center justify-center cursor-grab active:cursor-grabbing rounded-sm transition-colors",
+                  isDark ? "text-white/60 hover:text-white" : "text-black/60 hover:text-black"
+                )}
+                title="Drag to move chat"
+              >
+                <span className="h-6 w-px rounded-full bg-current" />
+              </button>
+            )}
           </div>
         </form>
       </div>
