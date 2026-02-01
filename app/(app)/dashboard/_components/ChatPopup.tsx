@@ -14,6 +14,8 @@ type ChatPopupProps = {
   sidebarOpen?: boolean;
   isMobile?: boolean;
   calendars?: UserCalendar[];
+  selectedCalendarIds?: string[];
+  onEnableCalendar?: (calendarId: string) => void;
 };
 
 const CANCEL_INTENT_REGEX = /\b(stop|cancel|never mind|nevermind|nvm|abort|don't add|dont add|do not add|don't delete|dont delete|do not delete|forget it|keep it|keep that|leave it)\b/i;
@@ -21,7 +23,7 @@ const CANCEL_INTENT_REGEX = /\b(stop|cancel|never mind|nevermind|nvm|abort|don't
 // Limit messages sent to AI to save API tokens (full history is still saved to DB)
 const MAX_CONTEXT_MESSAGES = 20;
 
-export default function ChatPopup({ sidebarOpen = false, isMobile = false, calendars = [] }: ChatPopupProps) {
+export default function ChatPopup({ sidebarOpen = false, isMobile = false, calendars = [], selectedCalendarIds, onEnableCalendar }: ChatPopupProps) {
   const { triggerRefresh, theme, pendingEvents, pendingDeletions, lastConfirmedEvents, setPendingEvents, clearPendingEvents, clearPendingDeletions, setPendingDeletions, goToDate, setScrollToTime } = useCalendar();
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
@@ -289,6 +291,15 @@ export default function ChatPopup({ sidebarOpen = false, isMobile = false, calen
         });
 
         if (validEvents.length > 0) {
+          // Enable any calendars that are not currently visible so the user can see the preview
+          if (selectedCalendarIds && onEnableCalendar) {
+            for (const event of validEvents) {
+              if (event.calendarId && !selectedCalendarIds.includes(event.calendarId)) {
+                onEnableCalendar(event.calendarId);
+              }
+            }
+          }
+
           // Set pending events first
           setPendingEvents((prev: PendingEvent[]) => [...prev, ...validEvents]);
 
@@ -364,7 +375,7 @@ export default function ChatPopup({ sidebarOpen = false, isMobile = false, calen
     } finally {
       setLoading(false);
     }
-  }, [input, loading, messages, pendingEvents, pendingDeletions, lastConfirmedEvents, setPendingEvents, clearPendingEvents, clearPendingDeletions, setPendingDeletions, goToDate, setScrollToTime, triggerRefresh, saveMessages, calendars]);
+  }, [input, loading, messages, pendingEvents, pendingDeletions, lastConfirmedEvents, setPendingEvents, clearPendingEvents, clearPendingDeletions, setPendingDeletions, goToDate, setScrollToTime, triggerRefresh, saveMessages, calendars, selectedCalendarIds, onEnableCalendar]);
 
   const handleDragPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
     if (isMobile) return; // disable drag on mobile to avoid conflicts

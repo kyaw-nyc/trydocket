@@ -62,6 +62,8 @@ export async function PATCH(
 
   const { eventId } = await params;
   const body = await req.json();
+  const { searchParams } = new URL(req.url);
+  const calendarId = searchParams.get("calendarId") || "primary";
 
   try {
     const updates: Record<string, unknown> = {};
@@ -82,7 +84,7 @@ export async function PATCH(
       };
     }
 
-    const event = await updateEvent(accessToken, eventId, updates);
+    const event = await updateEvent(accessToken, eventId, updates, calendarId);
     return NextResponse.json({ event });
   } catch (error) {
     return NextResponse.json(
@@ -114,9 +116,11 @@ export async function DELETE(
   }
 
   const { eventId } = await params;
+  const { searchParams } = new URL(req.url);
+  const calendarId = searchParams.get("calendarId") || "primary";
 
   try {
-    await deleteEvent(accessToken, eventId);
+    await deleteEvent(accessToken, eventId, calendarId);
     return NextResponse.json({ success: true });
   } catch (error) {
     return NextResponse.json(

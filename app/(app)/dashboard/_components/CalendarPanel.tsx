@@ -146,6 +146,8 @@ export default function CalendarPanel() {
         sidebarOpen={sidebarOpen}
         isMobile={isMobile}
         calendars={calendars}
+        selectedCalendarIds={selectedCalendarIds}
+        onEnableCalendar={toggleCalendar}
       />
     </div>
   );

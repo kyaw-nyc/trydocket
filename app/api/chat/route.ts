@@ -173,7 +173,7 @@ async function executeCalendarTool(
           timeZone: args.timeZone || userTimeZone,
         };
       }
-      const event = await updateEvent(accessToken, args.eventId, updates);
+      const event = await updateEvent(accessToken, args.eventId, updates, args.calendarId || "primary");
       return { result: JSON.stringify(event) };
     }
     case "propose_delete_event": {
@@ -184,18 +184,21 @@ async function executeCalendarTool(
         throw new Error("summary, startDateTime, and endDateTime are required for propose_delete_event");
       }
 
+      const targetEventId = args.scope === "all" && args.seriesEventId ? args.seriesEventId : args.eventId;
+
       const pendingDeletion: PendingDeletionData = {
-        eventId: args.eventId,
+        eventId: targetEventId,
         calendarId: args.calendarId,
         summary: args.summary,
         startDateTime: args.startDateTime,
         endDateTime: args.endDateTime,
+        scope: args.scope || "this",
       };
 
       return {
         result: JSON.stringify({
           success: true,
-          message: `Event "${args.summary}" has been marked for deletion and is now highlighted on the calendar. The user needs to click "Confirm Delete" to remove it from Google Calendar.`,
+          message: `Event "${args.summary}" has been marked for deletion (${args.scope === "all" ? "all occurrences" : "this occurrence"}). Please confirm the deletion to remove it from Google Calendar.`,
         }),
         pendingDeletion,
       };
@@ -204,7 +207,8 @@ async function executeCalendarTool(
       if (!args.eventId) {
         throw new Error("eventId is required for delete_event");
       }
-      const result = await deleteEvent(accessToken, args.eventId);
+      const targetEventId = args.scope === "all" && args.seriesEventId ? args.seriesEventId : args.eventId;
+      const result = await deleteEvent(accessToken, targetEventId, args.calendarId || "primary");
       return { result: JSON.stringify(result) };
     }
     case "cancel_pending_events": {

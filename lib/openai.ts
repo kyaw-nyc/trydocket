@@ -212,7 +212,9 @@ const TOOL_GUIDANCE = `## Tool Usage
 - Never guess event IDs; list_events first to retrieve them
 - Do not use create_event directly—use propose_event so the user can confirm
 - When the user specifies a calendar (e.g., "add to Office Hours", "put on my Work calendar"), use the calendarId parameter in propose_event
-- If the user doesn't specify a calendar, use the primary calendar (omit calendarId)`;
+- If the user doesn't specify a calendar, use the primary calendar (omit calendarId)
+- Recurring edits/deletes: after list_events, prefer scope=\"all\" with seriesEventId to update/delete the whole series unless the user explicitly says \"this occurrence only\"
+- When deleting recurring events: call propose_delete_event with scope and seriesEventId so the user can confirm deleting all occurrences`;
 
 const RESPONSE_GUIDELINES = `## Response Guidelines
 - When proposing: summarize what will be added and remind the user to confirm the preview
@@ -507,6 +509,10 @@ export const calendarTools: ChatCompletionTool[] = [
             type: "string",
             description: "default | public | private.",
           },
+          calendarId: {
+            type: "string",
+            description: "Optional calendar ID if not primary.",
+          },
         },
         required: ["eventId"],
       },
@@ -541,6 +547,15 @@ export const calendarTools: ChatCompletionTool[] = [
             type: "string",
             description: "Optional calendar ID if not on primary.",
           },
+          scope: {
+            type: "string",
+            description: "\"this\" deletes only this occurrence; \"all\" deletes the entire series (uses seriesEventId when provided).",
+            enum: ["this", "all"],
+          },
+          seriesEventId: {
+            type: "string",
+            description: "Master recurring event ID to target when scope = \"all\".",
+          },
         },
         required: ["eventId", "summary", "startDateTime", "endDateTime"],
       },
@@ -558,6 +573,19 @@ export const calendarTools: ChatCompletionTool[] = [
           eventId: {
             type: "string",
             description: "The ID of the event to delete.",
+          },
+          calendarId: {
+            type: "string",
+            description: "Optional calendar ID if not primary.",
+          },
+          scope: {
+            type: "string",
+            description: "\"this\" deletes only this occurrence; \"all\" deletes the entire series (uses seriesEventId when provided).",
+            enum: ["this", "all"],
+          },
+          seriesEventId: {
+            type: "string",
+            description: "Master recurring event ID for deleting an entire series.",
           },
         },
         required: ["eventId"],

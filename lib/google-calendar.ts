@@ -16,14 +16,14 @@ export async function listEvents(
   const calendar = getCalendar(accessToken);
   const res = await calendar.events.list({
     calendarId,
-    timeMin: timeMin || new Date().toISOString(),
+    timeMin: timeMin || new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString(),
     timeMax:
       timeMax ||
-      new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+      new Date(Date.now() + 180 * 24 * 60 * 60 * 1000).toISOString(),
     q: query,
     singleEvents: true,
     orderBy: "startTime",
-    maxResults: 100,
+    maxResults: 500,
   });
   const items = res.data.items || [];
   // Tag events with their source calendar for downstream filtering/labeling
@@ -100,21 +100,22 @@ export async function updateEvent(
     };
     transparency?: "opaque" | "transparent";
     visibility?: "default" | "public" | "private";
-  }
+  },
+  calendarId = "primary"
 ) {
   const calendar = getCalendar(accessToken);
   const res = await calendar.events.patch({
-    calendarId: "primary",
+    calendarId,
     eventId,
     requestBody: updates,
   });
   return res.data;
 }
 
-export async function deleteEvent(accessToken: string, eventId: string) {
+export async function deleteEvent(accessToken: string, eventId: string, calendarId = "primary") {
   const calendar = getCalendar(accessToken);
   await calendar.events.delete({
-    calendarId: "primary",
+    calendarId,
     eventId,
   });
   return { success: true };

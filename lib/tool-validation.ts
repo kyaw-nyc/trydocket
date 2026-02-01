@@ -93,10 +93,15 @@ export const proposeDeleteSchema = z.object({
   startDateTime: isoDateOrDateTime,
   endDateTime: isoDateOrDateTime,
   calendarId: z.string().optional(),
+  scope: z.enum(["this", "all"]).optional(),
+  seriesEventId: z.string().optional(), // recurring event master id
 });
 
 export const deleteEventSchema = z.object({
   eventId: z.string().min(1),
+  calendarId: z.string().optional(),
+  scope: z.enum(["this", "all"]).optional(),
+  seriesEventId: z.string().optional(),
 });
 
 export const cancelPendingSchema = z.object({});

@@ -40,8 +40,10 @@ export async function GET(req: NextRequest) {
       (calendars?.map((c) => c.id).filter((id): id is string => Boolean(id)) ?? ["primary"]);
 
     // Compute effective time range - ensure these are definitely strings
-    const defaultTimeMin = new Date().toISOString();
-    const defaultTimeMax = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+    // Defaults for chat/tooling when no explicit range is provided:
+    // look 30 days back and 180 days ahead so recurring series are fully discoverable.
+    const defaultTimeMin = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+    const defaultTimeMax = new Date(Date.now() + 180 * 24 * 60 * 60 * 1000).toISOString();
 
     // Ensure we have string values (not null/undefined)
     const timeMin: string = timeMinParam !== null ? timeMinParam : defaultTimeMin;
