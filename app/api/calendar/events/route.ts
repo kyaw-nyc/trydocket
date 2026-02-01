@@ -1,15 +1,26 @@
 import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@/lib/auth";
+import { createClient } from "@/lib/supabase/server";
+import { getValidGoogleToken } from "@/lib/google-token-refresh";
 import { listEvents, createEvent, getColors, getCalendarMetadata, listCalendars } from "@/lib/google-calendar";
 
 export async function GET(req: NextRequest) {
-  const session = await auth();
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
 
-  if (!session?.accessToken) {
+  if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const accessToken = session.accessToken;
+  let accessToken: string;
+  try {
+    accessToken = await getValidGoogleToken(supabase, user.id);
+  } catch (error) {
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : "Failed to get Google token" },
+      { status: 401 }
+    );
+  }
+
   const { searchParams } = new URL(req.url);
   const timeMinParam = searchParams.get("timeMin");
   const timeMaxParam = searchParams.get("timeMax");
@@ -31,7 +42,7 @@ export async function GET(req: NextRequest) {
     // Compute effective time range - ensure these are definitely strings
     const defaultTimeMin = new Date().toISOString();
     const defaultTimeMax = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
-    
+
     // Ensure we have string values (not null/undefined)
     const timeMin: string = timeMinParam !== null ? timeMinParam : defaultTimeMin;
     const timeMax: string = timeMaxParam !== null ? timeMaxParam : defaultTimeMax;
@@ -85,13 +96,23 @@ type PendingEvent = {
 };
 
 export async function POST(req: NextRequest) {
-  const session = await auth();
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
 
-  if (!session?.accessToken) {
+  if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const accessToken = session.accessToken;
+  let accessToken: string;
+  try {
+    accessToken = await getValidGoogleToken(supabase, user.id);
+  } catch (error) {
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : "Failed to get Google token" },
+      { status: 401 }
+    );
+  }
+
   const body = await req.json();
 
   try {

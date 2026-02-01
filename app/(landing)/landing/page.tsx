@@ -1,23 +1,13 @@
-import { signIn } from "@/lib/auth";
 import { MarketingNavbar } from "@/components/marketing/layout/MarketingNavbar";
+import { SignInButton } from "@/components/auth/SignInButton";
 
 export default function LandingPage() {
   return (
     <div className="min-h-screen bg-neutral-50">
       <MarketingNavbar>
-        <form
-          action={async () => {
-            "use server";
-            await signIn("google", { redirectTo: "/dashboard" });
-          }}
-        >
-          <button
-            type="submit"
-            className="cursor-pointer rounded-full bg-neutral-900 px-6 py-3 text-[15px] font-semibold text-white transition-colors hover:bg-neutral-800"
-          >
-            Sign in
-          </button>
-        </form>
+        <SignInButton className="cursor-pointer rounded-full bg-neutral-900 px-6 py-3 text-[15px] font-semibold text-white transition-colors hover:bg-neutral-800">
+          Sign in
+        </SignInButton>
       </MarketingNavbar>
 
       {/* Hero */}
@@ -32,17 +22,8 @@ export default function LandingPage() {
             Schedule, reschedule, and organize your Google Calendar using natural language.
             Just tell Docket what you need.
           </p>
-          <form
-            action={async () => {
-              "use server";
-              await signIn("google", { redirectTo: "/dashboard" });
-            }}
-            className="mt-10"
-          >
-            <button
-              type="submit"
-              className="cursor-pointer inline-flex items-center gap-3 rounded-xl bg-neutral-900 px-6 py-3.5 text-base font-medium text-white transition-all hover:bg-neutral-800 hover:shadow-lg"
-            >
+          <div className="mt-10">
+            <SignInButton className="cursor-pointer inline-flex items-center gap-3 rounded-xl bg-neutral-900 px-6 py-3.5 text-base font-medium text-white transition-all hover:bg-neutral-800 hover:shadow-lg">
               <svg className="h-5 w-5" viewBox="0 0 24 24">
                 <path
                   d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z"
@@ -62,8 +43,8 @@ export default function LandingPage() {
                 />
               </svg>
               Continue with Google
-            </button>
-          </form>
+            </SignInButton>
+          </div>
         </div>
       </section>
 
@@ -364,23 +345,14 @@ export default function LandingPage() {
           <p className="mt-4 text-neutral-500">
             Connect your Google Calendar and start using Docket in seconds.
           </p>
-          <form
-            action={async () => {
-              "use server";
-              await signIn("google", { redirectTo: "/dashboard" });
-            }}
-            className="mt-8"
-          >
-            <button
-              type="submit"
-              className="cursor-pointer inline-flex items-center gap-3 rounded-xl bg-neutral-900 px-6 py-3.5 text-base font-medium text-white transition-all hover:bg-neutral-800 hover:shadow-lg"
-            >
+          <div className="mt-8">
+            <SignInButton className="cursor-pointer inline-flex items-center gap-3 rounded-xl bg-neutral-900 px-6 py-3.5 text-base font-medium text-white transition-all hover:bg-neutral-800 hover:shadow-lg">
               Get started for free
               <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M17 8l4 4m0 0l-4 4m4-4H3" />
               </svg>
-            </button>
-          </form>
+            </SignInButton>
+          </div>
         </div>
       </section>
 
@@ -397,7 +369,7 @@ export default function LandingPage() {
                         <path strokeLinecap="round" strokeLinejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
                       </svg>
                     </div>
-                    TRYDOCKET
+                    DOCKET
                   </div>
                   <p className="text-sm text-white/70">
                     Manage your Google Calendar with AI. Schedule, update, and organize events using natural language.
@@ -428,10 +400,10 @@ export default function LandingPage() {
               <div className="flex flex-col gap-8">
                 <div className="h-[1px] bg-white/20 w-full" />
                 <div className="flex flex-col md:flex-row items-center justify-between gap-4 text-sm text-white/70">
-                  <p>© {new Date().getFullYear()} Trydocket. All rights reserved.</p>
+                  <p>© {new Date().getFullYear()} Docket. All rights reserved.</p>
                   <div className="flex gap-6">
-                    <a href="/landing" className="hover:text-white transition-colors">Privacy Policy</a>
-                    <a href="/landing" className="hover:text-white transition-colors">Terms of Service</a>
+                    <a href="/privacy" className="hover:text-white transition-colors">Privacy Policy</a>
+                    <a href="/terms" className="hover:text-white transition-colors">Terms of Service</a>
                   </div>
                 </div>
               </div>

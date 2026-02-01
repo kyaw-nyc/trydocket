@@ -97,7 +97,7 @@ export function MarketingNavbar({ children }: MarketingNavbarProps) {
                   </svg>
                 </div>
                 <span className="font-semibold text-[20px] tracking-tight">
-                  Trydocket
+                  Docket
                 </span>
               </Link>
 

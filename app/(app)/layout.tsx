@@ -1,5 +1,4 @@
-import { SessionProvider } from "next-auth/react";
-import { auth } from "@/lib/auth";
+import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
 
 export default async function AppLayout({
@@ -7,15 +6,14 @@ export default async function AppLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const session = await auth();
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
 
-  if (!session) {
+  if (!user) {
     redirect("/landing");
   }
 
   return (
-    <SessionProvider session={session}>
-      <div className="h-screen overflow-hidden">{children}</div>
-    </SessionProvider>
+    <div className="h-screen overflow-hidden">{children}</div>
   );
 }

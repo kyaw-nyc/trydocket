@@ -1,15 +1,27 @@
 import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@/lib/auth";
+import { createClient } from "@/lib/supabase/server";
+import { getValidGoogleToken } from "@/lib/google-token-refresh";
 import { updateEvent, deleteEvent, getEvent } from "@/lib/google-calendar";
 
 export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ eventId: string }> }
 ) {
-  const session = await auth();
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
 
-  if (!session?.accessToken) {
+  if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  let accessToken: string;
+  try {
+    accessToken = await getValidGoogleToken(supabase, user.id);
+  } catch (error) {
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : "Failed to get Google token" },
+      { status: 401 }
+    );
   }
 
   const { eventId } = await params;
@@ -17,7 +29,7 @@ export async function GET(
   const calendarId = searchParams.get("calendarId") || "primary";
 
   try {
-    const event = await getEvent(session.accessToken, eventId, calendarId);
+    const event = await getEvent(accessToken, eventId, calendarId);
     return NextResponse.json({ event });
   } catch (error) {
     return NextResponse.json(
@@ -31,10 +43,21 @@ export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ eventId: string }> }
 ) {
-  const session = await auth();
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
 
-  if (!session?.accessToken) {
+  if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  let accessToken: string;
+  try {
+    accessToken = await getValidGoogleToken(supabase, user.id);
+  } catch (error) {
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : "Failed to get Google token" },
+      { status: 401 }
+    );
   }
 
   const { eventId } = await params;
@@ -59,7 +82,7 @@ export async function PATCH(
       };
     }
 
-    const event = await updateEvent(session.accessToken, eventId, updates);
+    const event = await updateEvent(accessToken, eventId, updates);
     return NextResponse.json({ event });
   } catch (error) {
     return NextResponse.json(
@@ -73,16 +96,27 @@ export async function DELETE(
   req: NextRequest,
   { params }: { params: Promise<{ eventId: string }> }
 ) {
-  const session = await auth();
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
 
-  if (!session?.accessToken) {
+  if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  let accessToken: string;
+  try {
+    accessToken = await getValidGoogleToken(supabase, user.id);
+  } catch (error) {
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : "Failed to get Google token" },
+      { status: 401 }
+    );
   }
 
   const { eventId } = await params;
 
   try {
-    await deleteEvent(session.accessToken, eventId);
+    await deleteEvent(accessToken, eventId);
     return NextResponse.json({ success: true });
   } catch (error) {
     return NextResponse.json(

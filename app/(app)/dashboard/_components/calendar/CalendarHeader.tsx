@@ -19,7 +19,8 @@ import {
   Moon,
   LogOut,
 } from "lucide-react";
-import { signOut } from "next-auth/react";
+import { createClient } from "@/lib/supabase/client";
+import { useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
 
 type CalendarHeaderProps = {
@@ -47,6 +48,14 @@ function CalendarHeaderComponent({
   onRefresh,
   onToggleTheme,
 }: CalendarHeaderProps) {
+  const router = useRouter();
+
+  const handleSignOut = async () => {
+    const supabase = createClient();
+    await supabase.auth.signOut();
+    router.push("/landing");
+  };
+
   return (
     <header className={cn(
       "flex items-center justify-between px-4 py-3 md:px-6",
@@ -159,7 +168,7 @@ function CalendarHeaderComponent({
               )}
             </DropdownMenuItem>
             <DropdownMenuSeparator />
-            <DropdownMenuItem onClick={() => signOut({ callbackUrl: "/landing" })} className="cursor-pointer">
+            <DropdownMenuItem onClick={handleSignOut} className="cursor-pointer">
               <LogOut className="mr-2 h-4 w-4" />
               Sign out
             </DropdownMenuItem>

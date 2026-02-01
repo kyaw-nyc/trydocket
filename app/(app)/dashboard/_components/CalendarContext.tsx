@@ -1,6 +1,7 @@
 "use client";
 
 import { createContext, useContext, useState, useCallback, useEffect, ReactNode } from "react";
+import { ThemeSelectionModal } from "./ThemeSelectionModal";
 
 const THEME_STORAGE_KEY = "docket:theme";
 
@@ -64,26 +65,92 @@ export function CalendarProvider({ children }: { children: ReactNode }) {
   const [isDeleting, setIsDeleting] = useState(false);
   const [goToDateFn, setGoToDateFn] = useState<GoToDateFn | null>(null);
   const [scrollToTime, setScrollToTime] = useState<Date | null>(null);
+  const [showThemeModal, setShowThemeModal] = useState(false);
+  const [isLoadingTheme, setIsLoadingTheme] = useState(true);
 
-  // Restore theme from localStorage on mount
+  // Fetch theme from database on mount
   useEffect(() => {
-    try {
-      const savedTheme = localStorage.getItem(THEME_STORAGE_KEY);
-      if (savedTheme === "dark" || savedTheme === "light") {
-        setThemeState(savedTheme);
+    async function fetchTheme() {
+      try {
+        const res = await fetch("/api/user/theme");
+        if (res.ok) {
+          const data = await res.json();
+          if (data.theme) {
+            // User has a theme preference saved
+            setThemeState(data.theme);
+            localStorage.setItem(THEME_STORAGE_KEY, data.theme);
+          } else {
+            // No theme saved - check localStorage as fallback, or show modal
+            const savedTheme = localStorage.getItem(THEME_STORAGE_KEY);
+            if (savedTheme === "dark" || savedTheme === "light") {
+              setThemeState(savedTheme);
+              // Save to database
+              await fetch("/api/user/theme", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ theme: savedTheme }),
+              });
+            } else {
+              // Show theme selection modal for first-time users
+              setShowThemeModal(true);
+            }
+          }
+        } else {
+          // Fallback to localStorage if API fails
+          const savedTheme = localStorage.getItem(THEME_STORAGE_KEY);
+          if (savedTheme === "dark" || savedTheme === "light") {
+            setThemeState(savedTheme);
+          }
+        }
+      } catch {
+        // Fallback to localStorage if API fails
+        const savedTheme = localStorage.getItem(THEME_STORAGE_KEY);
+        if (savedTheme === "dark" || savedTheme === "light") {
+          setThemeState(savedTheme);
+        }
+      } finally {
+        setIsLoadingTheme(false);
       }
+    }
+
+    fetchTheme();
+  }, []);
+
+  // Handle theme selection from modal
+  const handleThemeSelect = useCallback(async (selectedTheme: "light" | "dark") => {
+    setThemeState(selectedTheme);
+    localStorage.setItem(THEME_STORAGE_KEY, selectedTheme);
+    setShowThemeModal(false);
+
+    // Save to database
+    try {
+      await fetch("/api/user/theme", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ theme: selectedTheme }),
+      });
     } catch {
-      // Ignore localStorage errors
+      // Ignore errors - localStorage will serve as fallback
     }
   }, []);
 
-  // Wrapper to save theme to localStorage when it changes
-  const setTheme = useCallback((newTheme: "light" | "dark") => {
+  // Wrapper to save theme to both localStorage and database when it changes
+  const setTheme = useCallback(async (newTheme: "light" | "dark") => {
     setThemeState(newTheme);
     try {
       localStorage.setItem(THEME_STORAGE_KEY, newTheme);
     } catch {
       // Ignore localStorage errors
+    }
+    // Save to database
+    try {
+      await fetch("/api/user/theme", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ theme: newTheme }),
+      });
+    } catch {
+      // Ignore errors
     }
   }, []);
 
@@ -149,6 +216,15 @@ export function CalendarProvider({ children }: { children: ReactNode }) {
     }
   }, [pendingDeletions, triggerRefresh]);
 
+  // Don't render children until we've determined the theme
+  if (isLoadingTheme) {
+    return (
+      <div className="flex h-screen items-center justify-center bg-white">
+        <div className="h-8 w-8 animate-spin rounded-full border-2 border-neutral-300 border-t-neutral-900" />
+      </div>
+    );
+  }
+
   return (
     <CalendarContext.Provider
       value={{
@@ -173,6 +249,7 @@ export function CalendarProvider({ children }: { children: ReactNode }) {
         setScrollToTime,
       }}
     >
+      {showThemeModal && <ThemeSelectionModal onSelect={handleThemeSelect} />}
       {children}
     </CalendarContext.Provider>
   );

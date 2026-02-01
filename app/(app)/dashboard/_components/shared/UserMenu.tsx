@@ -11,7 +11,8 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Sun, Moon, LogOut } from "lucide-react";
-import { signOut } from "next-auth/react";
+import { createClient } from "@/lib/supabase/client";
+import { useRouter } from "next/navigation";
 import { useCalendar } from "../CalendarContext";
 
 type UserMenuProps = {
@@ -25,6 +26,7 @@ type UserMenuProps = {
 function UserMenuComponent({ user }: UserMenuProps) {
   const { theme, setTheme } = useCalendar();
   const isDark = theme === "dark";
+  const router = useRouter();
 
   const initials = user?.name
     ? user.name
@@ -34,6 +36,12 @@ function UserMenuComponent({ user }: UserMenuProps) {
         .toUpperCase()
         .slice(0, 2)
     : user?.email?.slice(0, 2).toUpperCase() || "?";
+
+  const handleSignOut = async () => {
+    const supabase = createClient();
+    await supabase.auth.signOut();
+    router.push("/landing");
+  };
 
   return (
     <DropdownMenu>
@@ -71,7 +79,7 @@ function UserMenuComponent({ user }: UserMenuProps) {
           )}
         </DropdownMenuItem>
         <DropdownMenuSeparator />
-        <DropdownMenuItem onClick={() => signOut({ callbackUrl: "/landing" })}>
+        <DropdownMenuItem onClick={handleSignOut}>
           <LogOut className="mr-2 h-4 w-4" />
           Sign out
         </DropdownMenuItem>

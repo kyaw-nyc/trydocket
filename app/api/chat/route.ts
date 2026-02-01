@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@/lib/auth";
+import { createClient } from "@/lib/supabase/server";
+import { getValidGoogleToken } from "@/lib/google-token-refresh";
 import {
   openai,
   calendarTools,
@@ -76,7 +77,7 @@ async function executeCalendarTool(
       const tz = args.timeZone || userTimeZone;
       const startDateTime = roundToNearest5Minutes(args.startDateTime!, tz);
       const endDateTime = roundToNearest5Minutes(args.endDateTime!, tz);
-      
+
       // Check for conflicts with existing events
       let conflicts: Array<{ summary?: string; start?: string; end?: string }> = [];
       try {
@@ -87,11 +88,11 @@ async function executeCalendarTool(
           args.calendarId,
           args.query
         );
-        
+
         // Filter for overlapping events
         const startMs = new Date(startDateTime).getTime();
         const endMs = new Date(endDateTime).getTime();
-        
+
         conflicts = existingEvents
           .filter((event) => {
             const eventStart = event.start?.dateTime || event.start?.date;
@@ -113,7 +114,7 @@ async function executeCalendarTool(
         // If conflict check fails, proceed anyway but log it
         console.error("Failed to check for conflicts:", error);
       }
-      
+
       const pendingEvent: PendingEventData = {
         id: `pending-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
         summary: args.summary!,
@@ -124,7 +125,7 @@ async function executeCalendarTool(
         timeZone: tz,
         recurrence: Array.isArray(args.recurrence) ? args.recurrence : undefined,
       };
-      
+
       return {
         result: JSON.stringify({
           success: true,
@@ -226,10 +227,21 @@ async function executeCalendarTool(
 }
 
 export async function POST(req: NextRequest) {
-  const session = await auth();
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
 
-  if (!session?.accessToken) {
+  if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  let accessToken: string;
+  try {
+    accessToken = await getValidGoogleToken(supabase, user.id);
+  } catch (error) {
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : "Failed to get Google token" },
+      { status: 401 }
+    );
   }
 
   const body = (await req.json()) as {
@@ -348,7 +360,7 @@ These deletions are previews. Use cancel_pending_deletions to remove the deletio
         toolResult = await executeCalendarTool(
           toolCall.function.name,
           args,
-          session.accessToken,
+          accessToken,
           userTimezone
         );
 
