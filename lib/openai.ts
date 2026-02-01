@@ -210,9 +210,8 @@ const TOOL_GUIDANCE = `## Tool Usage
 - Include recurrence for repeats (e.g., weekdays -> RRULE:FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR)
 - Surface conflicts clearly: "You already have [title] from [time] to [time]. Proceed or choose another time?"
 - Never guess event IDs; list_events first to retrieve them
-- Do not use create_event directly—use propose_event so the user can confirm
-- When the user specifies a calendar (e.g., "add to Office Hours", "put on my Work calendar"), use the calendarId parameter in propose_event
-- If the user doesn't specify a calendar, use the primary calendar (omit calendarId)
+- $1
+- For updates or deletes on a specific calendar, include calendarId in update_event/propose_delete_event/delete_event so the correct calendar is targeted
 - Recurring edits/deletes: after list_events, prefer scope=\"all\" with seriesEventId to update/delete the whole series unless the user explicitly says \"this occurrence only\"
 - When deleting recurring events: call propose_delete_event with scope and seriesEventId so the user can confirm deleting all occurrences`;
 
