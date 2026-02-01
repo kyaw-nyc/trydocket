@@ -48,6 +48,7 @@ type PendingDeletionData = {
   summary: string;
   startDateTime: string;
   endDateTime: string;
+  scope?: "this" | "all";
 };
 
 async function executeCalendarTool(

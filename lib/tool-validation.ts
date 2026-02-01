@@ -19,6 +19,8 @@ export type CalendarToolArgs = {
   transparency?: string;
   visibility?: string;
   query?: string;
+  scope?: "this" | "all";
+  seriesEventId?: string;
 };
 
 const isoDateOnlyPattern = /^\d{4}-\d{2}-\d{2}$/;
