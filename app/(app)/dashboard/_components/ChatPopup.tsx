@@ -291,8 +291,11 @@ export default function ChatPopup({ sidebarOpen = false, isMobile = false }: Cha
     }
   }, [input, loading, messages, pendingEvents, pendingDeletions, setPendingEvents, clearPendingEvents, clearPendingDeletions, setPendingDeletions, goToDate, setScrollToTime, triggerRefresh]);
 
-  const handleDragPointerDown = (e: React.PointerEvent<HTMLButtonElement>) => {
+  const handleDragPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
     if (isMobile) return; // disable drag on mobile to avoid conflicts
+    // Only start drag if clicking on the container itself, not interactive elements
+    const target = e.target as HTMLElement;
+    if (target.closest("button, textarea, input, a")) return;
     dragStateRef.current = {
       startX: e.clientX,
       slotAtStart: slot,
@@ -386,8 +389,10 @@ export default function ChatPopup({ sidebarOpen = false, isMobile = false }: Cha
     >
       {/* Combined chat container */}
       <div
+        onPointerDown={handleDragPointerDown}
         className={cn(
           "rounded-2xl backdrop-blur-md shadow-sm pointer-events-auto overflow-hidden transition-all duration-200",
+          !isMobile && "cursor-grab active:cursor-grabbing",
           isDark
             ? "bg-black/40 border border-white/10"
             : "bg-white/40 border border-black/10"
@@ -529,20 +534,6 @@ export default function ChatPopup({ sidebarOpen = false, isMobile = false }: Cha
                 </svg>
               )}
             </button>
-            {!isMobile && (
-              <button
-                type="button"
-                aria-label="Drag chat"
-                onPointerDown={handleDragPointerDown}
-                className={cn(
-                  "relative h-8 w-3 shrink-0 flex items-center justify-center cursor-grab active:cursor-grabbing rounded-sm transition-colors",
-                  isDark ? "text-white/60 hover:text-white" : "text-black/60 hover:text-black"
-                )}
-                title="Drag to move chat"
-              >
-                <span className="h-6 w-px rounded-full bg-current" />
-              </button>
-            )}
           </div>
         </form>
       </div>

@@ -95,6 +95,8 @@ function CalendarGridComponent({
         isTransitioning ? "opacity-60" : "opacity-100"
       )}
     >
+      {/* Spacer for floating nav */}
+      <div className="h-14 flex-shrink-0" />
       {/* Day headers */}
       <div className="flex border-b border-border px-2 sm:px-4 md:px-6">
         <div className="w-10 sm:w-14 flex-shrink-0 pr-1 sm:pr-2">
