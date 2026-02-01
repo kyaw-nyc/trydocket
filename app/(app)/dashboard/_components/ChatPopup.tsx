@@ -96,19 +96,19 @@ export default function ChatPopup({ sidebarOpen = false, isMobile = false }: Cha
 
   const baseCenterShift = !isMobile && sidebarOpen ? 128 : 0;
 
-  const edgePadding = 0; // minimal gap; user wants max reach
+  const edgePadding = 14; // slightly larger gap from viewport edges
   const rightLimit = useMemo(() => {
     const halfViewport = viewportWidth / 2;
     const halfPopup = popupWidth / 2;
     return Math.max(0, halfViewport - halfPopup - edgePadding);
-  }, [viewportWidth, popupWidth]);
+  }, [viewportWidth, popupWidth, edgePadding]);
 
   const leftLimit = useMemo(() => {
     const halfViewport = viewportWidth / 2;
     const halfPopup = popupWidth / 2;
-    // When sidebar is open, give more space on the left by shifting the min bound rightward
-    return -Math.max(0, halfViewport - halfPopup - edgePadding) + baseCenterShift;
-  }, [viewportWidth, popupWidth, baseCenterShift]);
+    // When sidebar is open, shift the left wall right by baseCenterShift and keep edge padding
+    return -Math.max(0, halfViewport - halfPopup - edgePadding) + baseCenterShift + edgePadding;
+  }, [viewportWidth, popupWidth, baseCenterShift, edgePadding]);
 
   const slotOffsets = useMemo<Record<"left" | "center" | "right", number>>(
     () => ({
