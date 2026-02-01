@@ -6,6 +6,8 @@ import {
   calendarTools,
   getSystemPrompt,
   roundToNearest5Minutes,
+  CalendarInfo,
+  UserPreference,
 } from "@/lib/openai";
 import { listEvents, updateEvent, deleteEvent } from "@/lib/google-calendar";
 import type { ChatCompletionMessageParam } from "openai/resources/chat/completions";
@@ -31,6 +33,7 @@ type PendingEventData = {
   startDateTime: string;
   endDateTime: string;
   timeZone: string;
+  calendarId?: string;
   recurrence?: string[];
   attendees?: Array<{ email: string; displayName?: string; optional?: boolean }>;
   reminders?: Array<{ minutesBeforeStart: number; method?: string }>;
@@ -123,6 +126,7 @@ async function executeCalendarTool(
         startDateTime,
         endDateTime,
         timeZone: tz,
+        calendarId: args.calendarId,
         recurrence: Array.isArray(args.recurrence) ? args.recurrence : undefined,
       };
 
@@ -251,6 +255,8 @@ export async function POST(req: NextRequest) {
     pendingEventSummaries?: string[];
     hasPendingDeletions?: boolean;
     pendingDeletionSummaries?: string[];
+    calendars?: CalendarInfo[];
+    recentConfirmedEvents?: Array<{ id: string; summary?: string; startDateTime?: string; endDateTime?: string; calendarId?: string | null }>;
   };
 
   const {
@@ -260,6 +266,8 @@ export async function POST(req: NextRequest) {
     pendingEventSummaries,
     hasPendingDeletions,
     pendingDeletionSummaries,
+    calendars,
+    recentConfirmedEvents,
   } = body;
 
   // Get current time formatted nicely
@@ -275,6 +283,20 @@ export async function POST(req: NextRequest) {
   });
 
   const userTimezone = timezone || getUserTimezone();
+
+  // Fetch user preferences from database
+  let userPreferences: UserPreference[] = [];
+  try {
+    const { data: prefs } = await supabase
+      .from("user_preferences")
+      .select("key, value")
+      .eq("user_id", user.id);
+    if (prefs) {
+      userPreferences = prefs as UserPreference[];
+    }
+  } catch (error) {
+    console.error("Failed to fetch user preferences:", error);
+  }
 
   // Build pending events context for the AI - THIS IS CRITICAL FOR CORRECT BEHAVIOR
   let pendingEventsContext = "";
@@ -310,7 +332,7 @@ These deletions are previews. Use cancel_pending_deletions to remove the deletio
 
   // Build conversation with dynamic system prompt
   const conversationMessages: ChatCompletionMessageParam[] = [
-    { role: "system", content: getSystemPrompt(currentTime, userTimezone) + pendingEventsContext + pendingDeletionsContext },
+    { role: "system", content: getSystemPrompt(currentTime, userTimezone, calendars, userPreferences, recentConfirmedEvents) + pendingEventsContext + pendingDeletionsContext },
     ...messages,
   ];
 
@@ -355,6 +377,52 @@ These deletions are previews. Use cancel_pending_deletions to remove the deletio
       let toolResult: { result: string; pendingEvent?: PendingEventData; pendingDeletion?: PendingDeletionData; clearPendingEvents?: boolean; clearPendingDeletions?: boolean };
 
       try {
+        // Handle save_preference separately (doesn't need Google token)
+        if (toolCall.function.name === "save_preference") {
+          const { key, value } = rawArgs as { key: string; value: string };
+          if (key && value) {
+            const { error } = await supabase
+              .from("user_preferences")
+              .upsert(
+                {
+                  user_id: user.id,
+                  key,
+                  value,
+                  updated_at: new Date().toISOString(),
+                },
+                { onConflict: "user_id,key" }
+              );
+
+            if (error) {
+              toolResult = {
+                result: JSON.stringify({
+                  error: `Failed to save preference: ${error.message}`,
+                }),
+              };
+            } else {
+              toolResult = {
+                result: JSON.stringify({
+                  success: true,
+                  message: `Saved preference: ${key} = "${value}". I'll remember this for future scheduling.`,
+                }),
+              };
+            }
+          } else {
+            toolResult = {
+              result: JSON.stringify({
+                error: "Both key and value are required for save_preference",
+              }),
+            };
+          }
+
+          conversationMessages.push({
+            role: "tool",
+            tool_call_id: toolCall.id,
+            content: toolResult.result,
+          });
+          continue;
+        }
+
         const args = validateToolArgs(toolCall.function.name, rawArgs);
 
         toolResult = await executeCalendarTool(

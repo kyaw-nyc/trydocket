@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { useCalendar, PendingEvent, PendingDeletion } from "./CalendarContext";
 import { cn } from "@/lib/utils";
+import { UserCalendar } from "./types/calendar";
 
 type Message = {
   role: "user" | "assistant";
@@ -12,12 +13,16 @@ type Message = {
 type ChatPopupProps = {
   sidebarOpen?: boolean;
   isMobile?: boolean;
+  calendars?: UserCalendar[];
 };
 
 const CANCEL_INTENT_REGEX = /\b(stop|cancel|never mind|nevermind|nvm|abort|don't add|dont add|do not add|don't delete|dont delete|do not delete|forget it|keep it|keep that|leave it)\b/i;
 
-export default function ChatPopup({ sidebarOpen = false, isMobile = false }: ChatPopupProps) {
-  const { triggerRefresh, theme, pendingEvents, pendingDeletions, setPendingEvents, clearPendingEvents, clearPendingDeletions, setPendingDeletions, goToDate, setScrollToTime } = useCalendar();
+// Limit messages sent to AI to save API tokens (full history is still saved to DB)
+const MAX_CONTEXT_MESSAGES = 20;
+
+export default function ChatPopup({ sidebarOpen = false, isMobile = false, calendars = [] }: ChatPopupProps) {
+  const { triggerRefresh, theme, pendingEvents, pendingDeletions, lastConfirmedEvents, setPendingEvents, clearPendingEvents, clearPendingDeletions, setPendingDeletions, goToDate, setScrollToTime } = useCalendar();
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
@@ -27,6 +32,7 @@ export default function ChatPopup({ sidebarOpen = false, isMobile = false }: Cha
   const [dragOffset, setDragOffset] = useState(0);
   const [viewportWidth, setViewportWidth] = useState<number>(typeof window !== "undefined" ? window.innerWidth : 1280);
   const [popupWidth, setPopupWidth] = useState<number>(640);
+  const [sessionId, setSessionId] = useState<string | null>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const popupRef = useRef<HTMLDivElement>(null);
@@ -37,6 +43,67 @@ export default function ChatPopup({ sidebarOpen = false, isMobile = false }: Cha
   });
 
   const isDark = theme === "dark";
+
+  // Load chat history on mount
+  useEffect(() => {
+    async function loadHistory() {
+      try {
+        const res = await fetch("/api/chat/history");
+        if (res.ok) {
+          const data = await res.json();
+          if (data.messages && data.messages.length > 0) {
+            setMessages(data.messages);
+            setIsExpanded(true);
+          }
+          if (data.sessionId) {
+            setSessionId(data.sessionId);
+          }
+        }
+      } catch (error) {
+        console.error("Failed to load chat history:", error);
+      }
+    }
+    loadHistory();
+  }, []);
+
+  // Save messages to database
+  const saveMessages = useCallback(async (newMessages: Message[]) => {
+    if (newMessages.length === 0) return;
+
+    try {
+      const res = await fetch("/api/chat/history", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sessionId,
+          messages: newMessages,
+        }),
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        if (data.sessionId && !sessionId) {
+          setSessionId(data.sessionId);
+        }
+      }
+    } catch (error) {
+      console.error("Failed to save chat history:", error);
+    }
+  }, [sessionId]);
+
+  // Clear chat history
+  const clearHistory = useCallback(async () => {
+    try {
+      const res = await fetch("/api/chat/history", { method: "DELETE" });
+      if (res.ok) {
+        setMessages([]);
+        setSessionId(null);
+        setIsExpanded(true);
+      }
+    } catch (error) {
+      console.error("Failed to clear chat history:", error);
+    }
+  }, []);
 
   useEffect(() => {
     inputRef.current?.focus();
@@ -141,52 +208,57 @@ export default function ChatPopup({ sidebarOpen = false, isMobile = false }: Cha
     try {
       // If the user asks to stop/cancel while previews are showing, clear them immediately without waiting for the model
       const wantsToCancelPreview = CANCEL_INTENT_REGEX.test(text);
-      if (wantsToCancelPreview) {
-        if (pendingEvents.length > 0 || pendingDeletions.length > 0) {
-          clearPendingEvents();
-          clearPendingDeletions();
+      if (wantsToCancelPreview && (pendingEvents.length > 0 || pendingDeletions.length > 0)) {
+        clearPendingEvents();
+        clearPendingDeletions();
 
-          const cleared: string[] = [];
-          if (pendingEvents.length > 0) {
-            cleared.push(`${pendingEvents.length} pending event${pendingEvents.length > 1 ? "s" : ""}`);
-          }
-          if (pendingDeletions.length > 0) {
-            cleared.push(`${pendingDeletions.length} pending deletion${pendingDeletions.length > 1 ? "s" : ""}`);
-          }
-
-          const summary = cleared.length > 0 ? cleared.join(" and ") : "pending changes";
-          setMessages((prev) => [
-            ...prev,
-            { role: "assistant", content: `No problem—cleared ${summary}. Nothing will be added or deleted.` },
-          ]);
-          setLoading(false);
-          return;
-        } else {
-          // Nothing pending to cancel—ack immediately to prevent hallucinations
-          setMessages((prev) => [
-            ...prev,
-            { role: "assistant", content: "Nothing is pending—everything already went through. Want me to recreate or undo anything?" },
-          ]);
-          setLoading(false);
-          return;
+        const cleared: string[] = [];
+        if (pendingEvents.length > 0) {
+          cleared.push(`${pendingEvents.length} pending event${pendingEvents.length > 1 ? "s" : ""}`);
         }
+        if (pendingDeletions.length > 0) {
+          cleared.push(`${pendingDeletions.length} pending deletion${pendingDeletions.length > 1 ? "s" : ""}`);
+        }
+
+        const summary = cleared.length > 0 ? cleared.join(" and ") : "pending changes";
+        const assistantMessage: Message = { role: "assistant", content: `No problem—cleared ${summary}. Nothing will be added or deleted.` };
+        setMessages((prev) => [...prev, assistantMessage]);
+        // Save both messages to history
+        saveMessages([userMessage, assistantMessage]);
+        setLoading(false);
+        return;
       }
 
       // Add timeout to prevent hanging
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 60000); // 60 second timeout
 
+      // Transform calendars to the format the API expects
+      const calendarInfo = calendars
+        .filter(c => c.accessRole === 'owner' || c.accessRole === 'writer')
+        .map(c => ({
+          id: c.id,
+          name: c.summary || c.id,
+          isPrimary: c.primary || false,
+        }));
+
+      // Limit messages sent to API to save tokens (keep last N messages)
+      const contextMessages = updatedMessages.slice(-MAX_CONTEXT_MESSAGES);
+
       const res = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          messages: updatedMessages,
+          messages: contextMessages,
           timezone: getUserTimezone(),
           // Pass current pending events so AI knows what's actually pending vs confirmed
           hasPendingEvents: pendingEvents.length > 0,
           pendingEventSummaries: pendingEvents.map(e => e.summary),
           hasPendingDeletions: pendingDeletions.length > 0,
           pendingDeletionSummaries: pendingDeletions.map(d => d.summary),
+          recentConfirmedEvents: lastConfirmedEvents,
+          // Pass available calendars so AI knows which calendars the user can add events to
+          calendars: calendarInfo,
         }),
         signal: controller.signal,
       });
@@ -276,20 +348,23 @@ export default function ChatPopup({ sidebarOpen = false, isMobile = false }: Cha
 
       // Handle empty or missing content
       const content = data.content || "I processed your request but don't have anything to say.";
-      setMessages((prev) => [...prev, { role: "assistant", content }]);
+      const assistantMessage: Message = { role: "assistant", content };
+      setMessages((prev) => [...prev, assistantMessage]);
+      // Save both user and assistant messages to history
+      saveMessages([userMessage, assistantMessage]);
       triggerRefresh();
     } catch (error) {
       const errorMessage = error instanceof Error && error.name === "AbortError"
         ? "Request timed out. Please try again."
         : "Sorry, something went wrong. Please try again.";
-      setMessages((prev) => [
-        ...prev,
-        { role: "assistant", content: errorMessage },
-      ]);
+      const assistantMessage: Message = { role: "assistant", content: errorMessage };
+      setMessages((prev) => [...prev, assistantMessage]);
+      // Still save the user message and error response to history
+      saveMessages([userMessage, assistantMessage]);
     } finally {
       setLoading(false);
     }
-  }, [input, loading, messages, pendingEvents, pendingDeletions, setPendingEvents, clearPendingEvents, clearPendingDeletions, setPendingDeletions, goToDate, setScrollToTime, triggerRefresh]);
+  }, [input, loading, messages, pendingEvents, pendingDeletions, lastConfirmedEvents, setPendingEvents, clearPendingEvents, clearPendingDeletions, setPendingDeletions, goToDate, setScrollToTime, triggerRefresh, saveMessages, calendars]);
 
   const handleDragPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
     if (isMobile) return; // disable drag on mobile to avoid conflicts
@@ -401,10 +476,10 @@ export default function ChatPopup({ sidebarOpen = false, isMobile = false }: Cha
         {/* Messages area - collapsible */}
         {hasMessages && isExpanded && (
           <div className="relative max-h-[40vh] overflow-hidden flex flex-col">
-            {/* Sticky collapse button at top */}
+            {/* Sticky header with collapse and clear buttons */}
             <div
               className={cn(
-                "sticky top-0 z-10 px-3 pt-2 pb-1",
+                "sticky top-0 z-10 px-3 pt-2 pb-1 flex items-center justify-between",
                 isDark ? "bg-black/40" : "bg-white/40"
               )}
               style={{ backdropFilter: "blur(12px)" }}
@@ -426,6 +501,20 @@ export default function ChatPopup({ sidebarOpen = false, isMobile = false }: Cha
                 >
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
                 </svg>
+              </button>
+              <button
+                type="button"
+                onClick={clearHistory}
+                className={cn(
+                  "flex h-7 px-2 shrink-0 items-center justify-center rounded-full transition-all cursor-pointer text-xs gap-1",
+                  isDark ? "text-white/40 hover:text-white hover:bg-white/10" : "text-black/40 hover:text-black hover:bg-black/5"
+                )}
+                title="Clear chat history"
+              >
+                <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                </svg>
+                Clear
               </button>
             </div>
             {/* Scrollable messages */}

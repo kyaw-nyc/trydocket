@@ -210,7 +210,9 @@ const TOOL_GUIDANCE = `## Tool Usage
 - Include recurrence for repeats (e.g., weekdays -> RRULE:FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR)
 - Surface conflicts clearly: "You already have [title] from [time] to [time]. Proceed or choose another time?"
 - Never guess event IDs; list_events first to retrieve them
-- Do not use create_event directly—use propose_event so the user can confirm`;
+- Do not use create_event directly—use propose_event so the user can confirm
+- When the user specifies a calendar (e.g., "add to Office Hours", "put on my Work calendar"), use the calendarId parameter in propose_event
+- If the user doesn't specify a calendar, use the primary calendar (omit calendarId)`;
 
 const RESPONSE_GUIDELINES = `## Response Guidelines
 - When proposing: summarize what will be added and remind the user to confirm the preview
@@ -227,19 +229,74 @@ const EXAMPLES = `## Example Interactions
 - User: "Schedule book reading for an hour" → start at now rounded up to next 5 minutes; end +1h; propose_event
 - User: "What do I have today?" → list_events for today's range in user's timezone`;
 
+export type CalendarInfo = {
+  id: string;
+  name: string;
+  isPrimary?: boolean;
+};
+
+export type UserPreference = {
+  key: string;
+  value: string;
+};
+
+const PREFERENCES_GUIDANCE = `## User Preferences
+- When the user expresses a scheduling preference (e.g., "I prefer morning meetings", "no meetings after 5pm", "I like 30-minute meetings"), use save_preference to remember it
+- Preferences persist across conversations and survive chat clearing
+- Apply saved preferences when proposing events (e.g., if user prefers mornings, suggest morning times)
+- Only save clear, actionable preferences - not one-time requests
+- Common preference keys: preferred_meeting_duration, preferred_time_of_day, no_meetings_before, no_meetings_after, default_meeting_buffer, work_hours_start, work_hours_end`;
+
 /**
  * Build the system prompt with strong calendar safety guardrails.
  */
-export function getSystemPrompt(currentTime: string, userTimezone: string) {
+export function getSystemPrompt(
+  currentTime: string,
+  userTimezone: string,
+  calendars?: CalendarInfo[],
+  preferences?: UserPreference[],
+  recentConfirmedEvents?: Array<{ id: string; summary?: string; startDateTime?: string; endDateTime?: string; calendarId?: string | null }>
+) {
+  const contextParts = [
+    `- Current date/time: ${currentTime}`,
+    `- User's timezone: ${userTimezone}`,
+    `- Use this timezone for all interpretations and formatting.`,
+  ];
+
+  if (calendars && calendars.length > 0) {
+    const calendarList = calendars
+      .map((c) => `  - "${c.name}"${c.isPrimary ? " (primary)" : ""}: calendarId = "${c.id}"`)
+      .join("\n");
+    contextParts.push(`- User's available calendars:\n${calendarList}`);
+    contextParts.push(`- When the user mentions a calendar by name, use the corresponding calendarId in propose_event.`);
+  }
+
+  if (preferences && preferences.length > 0) {
+    const prefList = preferences
+      .map((p) => `  - ${p.key}: ${p.value}`)
+      .join("\n");
+    contextParts.push(`- User's saved preferences:\n${prefList}`);
+    contextParts.push(`- Apply these preferences when scheduling (e.g., respect preferred times, durations).`);
+  }
+
+  if (recentConfirmedEvents && recentConfirmedEvents.length > 0) {
+    const recentList = recentConfirmedEvents
+      .map((e) => `  - ${e.summary ?? "Untitled"} (${e.startDateTime ?? "start?"} → ${e.endDateTime ?? "end?"}) id=${e.id}`)
+      .join("\n");
+    contextParts.push(`- Recently confirmed events (latest actions):\n${recentList}`);
+    contextParts.push(`- If the user says "undo" and there are no pending proposals, treat it as a request to remove the most recent confirmed event(s): use list_events if needed to verify ID, then propose_delete_event for the matching event(s).`);
+  }
+
   return [
     INTRO,
     PERSONALITY,
-    `## Current Context\n- Current date/time: ${currentTime}\n- User's timezone: ${userTimezone}\n- Use this timezone for all interpretations and formatting.`,
+    `## Current Context\n${contextParts.join("\n")}`,
     DATE_ACCURACY,
     AMBIGUITY_RULES,
     DEFAULTS_AND_ROUNDING,
     DECISION_POLICY,
     TOOL_GUIDANCE,
+    PREFERENCES_GUIDANCE,
     RESPONSE_GUIDELINES,
     EXAMPLES,
   ].join("\n\n");
@@ -316,6 +373,11 @@ export const calendarTools: ChatCompletionTool[] = [
             type: "string",
             description:
               "IANA timezone (e.g., America/New_York). Always include to avoid ambiguity.",
+          },
+          calendarId: {
+            type: "string",
+            description:
+              "Optional calendar ID to add the event to. If omitted, uses the primary calendar. Use this when the user specifies a calendar like 'add to my Work calendar' or 'put this on Office Hours'.",
           },
           recurrence: {
             type: "array",
@@ -525,6 +587,30 @@ export const calendarTools: ChatCompletionTool[] = [
         type: "object",
         properties: {},
         required: [],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "save_preference",
+      description:
+        "Save a user scheduling preference that persists across conversations. Use when the user expresses a recurring preference (not a one-time request).",
+      parameters: {
+        type: "object",
+        properties: {
+          key: {
+            type: "string",
+            description:
+              "Preference key (e.g., preferred_meeting_duration, preferred_time_of_day, no_meetings_before, no_meetings_after, work_hours_start, work_hours_end).",
+          },
+          value: {
+            type: "string",
+            description:
+              "Preference value (e.g., '30 minutes', 'morning', '9:00 AM', '5:00 PM').",
+          },
+        },
+        required: ["key", "value"],
       },
     },
   },

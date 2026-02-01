@@ -43,6 +43,13 @@ type CalendarContextType = {
   clearPendingEvents: () => void;
   confirmPendingEvents: () => Promise<void>;
   isConfirming: boolean;
+  lastConfirmedEvents: Array<{
+    id: string;
+    summary?: string;
+    startDateTime?: string;
+    endDateTime?: string;
+    calendarId?: string | null;
+  }>;
   pendingDeletions: PendingDeletion[];
   setPendingDeletions: (deletions: PendingDeletion[] | ((prev: PendingDeletion[]) => PendingDeletion[])) => void;
   clearPendingDeletions: () => void;
@@ -61,6 +68,13 @@ export function CalendarProvider({ children }: { children: ReactNode }) {
   const [theme, setThemeState] = useState<"light" | "dark">("light");
   const [pendingEvents, setPendingEvents] = useState<PendingEvent[]>([]);
   const [isConfirming, setIsConfirming] = useState(false);
+  const [lastConfirmedEvents, setLastConfirmedEvents] = useState<Array<{
+    id: string;
+    summary?: string;
+    startDateTime?: string;
+    endDateTime?: string;
+    calendarId?: string | null;
+  }>>([]);
   const [pendingDeletions, setPendingDeletions] = useState<PendingDeletion[]>([]);
   const [isDeleting, setIsDeleting] = useState(false);
   const [goToDateFn, setGoToDateFn] = useState<GoToDateFn | null>(null);
@@ -185,6 +199,41 @@ export function CalendarProvider({ children }: { children: ReactNode }) {
         throw new Error("Failed to create events");
       }
 
+      const data = await res.json();
+      if (Array.isArray(data?.events)) {
+        const recent = data.events
+          .flatMap((evt: unknown) => {
+            if (
+              typeof evt === "object" &&
+              evt !== null &&
+              "id" in evt &&
+              typeof (evt as { id: unknown }).id === "string"
+            ) {
+              const e = evt as {
+                id: string;
+                summary?: string;
+                start?: { dateTime?: string };
+                end?: { dateTime?: string };
+                calendarId?: string | null;
+                organizer?: { email?: string };
+              };
+              return [
+                {
+                  id: e.id,
+                  summary: e.summary,
+                  startDateTime: e.start?.dateTime,
+                  endDateTime: e.end?.dateTime,
+                  calendarId: e.calendarId ?? e.organizer?.email ?? null,
+                },
+              ];
+            }
+            return [];
+          });
+        if (recent.length > 0) {
+          setLastConfirmedEvents(recent);
+        }
+      }
+
       setPendingEvents([]);
       triggerRefresh();
     } finally {
@@ -238,6 +287,7 @@ export function CalendarProvider({ children }: { children: ReactNode }) {
         clearPendingEvents,
         confirmPendingEvents,
         isConfirming,
+        lastConfirmedEvents,
         pendingDeletions,
         setPendingDeletions,
         clearPendingDeletions,

@@ -54,6 +54,7 @@ export default function CalendarPanel() {
     defaultColor,
     loading,
     calendarLegend,
+    calendars,
     selectedCalendarIds,
     handleRefresh,
     getEventsForDay,
@@ -141,7 +142,11 @@ export default function CalendarPanel() {
       )}
 
       {/* Chat Popup - centered on calendar area */}
-      <ChatPopup sidebarOpen={sidebarOpen} isMobile={isMobile} />
+      <ChatPopup
+        sidebarOpen={sidebarOpen}
+        isMobile={isMobile}
+        calendars={calendars}
+      />
     </div>
   );
 }
