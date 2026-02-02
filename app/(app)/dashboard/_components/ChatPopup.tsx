@@ -46,26 +46,22 @@ export default function ChatPopup({ sidebarOpen = false, isMobile = false, calen
 
   const isDark = theme === "dark";
 
-  // Load chat history on mount
+  // Load session ID on mount (but don't load message history)
   useEffect(() => {
-    async function loadHistory() {
+    async function loadSessionId() {
       try {
         const res = await fetch("/api/chat/history");
         if (res.ok) {
           const data = await res.json();
-          if (data.messages && data.messages.length > 0) {
-            setMessages(data.messages);
-            setIsExpanded(true);
-          }
           if (data.sessionId) {
             setSessionId(data.sessionId);
           }
         }
       } catch (error) {
-        console.error("Failed to load chat history:", error);
+        console.error("Failed to load session ID:", error);
       }
     }
-    loadHistory();
+    loadSessionId();
   }, []);
 
   // Save messages to database

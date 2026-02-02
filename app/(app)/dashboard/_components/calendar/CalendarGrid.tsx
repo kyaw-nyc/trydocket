@@ -60,10 +60,13 @@ function CalendarGridComponent({
     return () => clearInterval(interval);
   }, []);
 
-  // Scroll to 8 AM on mount
+  // Scroll to current time on mount (with 1 hour padding above)
   useEffect(() => {
     if (scrollRef.current) {
-      scrollRef.current.scrollTop = 8 * HOUR_HEIGHT;
+      const now = new Date();
+      const currentHour = now.getHours() + now.getMinutes() / 60;
+      const targetHour = Math.max(0, currentHour - 1);
+      scrollRef.current.scrollTop = targetHour * HOUR_HEIGHT;
     }
   }, []);
 
