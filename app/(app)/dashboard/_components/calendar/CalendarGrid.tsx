@@ -15,7 +15,7 @@ type CalendarGridProps = {
   getEventsForDay: (date: Date) => CalendarEvent[];
   colors: ColorsMap;
   defaultColor: string | null;
-  onSelectEvent: (event: CalendarEvent) => void;
+  onSelectEvent: (event: CalendarEvent, position?: { x: number; y: number }) => void;
 };
 
 function CalendarGridComponent({
@@ -101,9 +101,9 @@ function CalendarGridComponent({
       {/* Spacer for floating nav */}
       <div className="h-14 flex-shrink-0" />
       {/* Day headers */}
-      <div className="flex border-b border-border px-2 sm:px-4 md:px-6">
+      <div className="flex border-b border-border/50 px-2 sm:px-4 md:px-6">
         <div className="w-10 sm:w-14 flex-shrink-0 pr-1 sm:pr-2">
-          <span className="text-[9px] sm:text-[11px] font-semibold tracking-wide text-muted-foreground">
+          <span className="text-[9px] sm:text-[10px] font-medium tracking-wide text-muted-foreground/60">
             {timezoneAbbr}
           </span>
         </div>
@@ -113,15 +113,18 @@ function CalendarGridComponent({
           return (
             <div
               key={date.toISOString()}
-              className="flex flex-1 flex-col items-center pb-2 sm:pb-3 text-center text-muted-foreground min-w-0"
+              className="flex flex-1 flex-col items-center pb-2 sm:pb-3 text-center min-w-0"
             >
-              <span className="text-[9px] sm:text-[11px] font-semibold tracking-wide">{day}</span>
+              <span className={cn(
+                "text-[9px] sm:text-[10px] font-medium tracking-wide",
+                today ? "text-foreground" : "text-muted-foreground/70"
+              )}>{day}</span>
               <span
                 className={cn(
-                  "mt-0.5 sm:mt-1 flex h-7 w-7 sm:h-9 sm:w-9 items-center justify-center rounded-full text-sm sm:text-lg font-semibold border transition-colors",
+                  "mt-0.5 sm:mt-1 flex h-7 w-7 sm:h-8 sm:w-8 items-center justify-center rounded-full text-sm sm:text-base font-semibold transition-colors",
                   today
-                    ? "border-foreground text-foreground"
-                    : "border-transparent text-foreground"
+                    ? "bg-foreground text-background"
+                    : "text-foreground"
                 )}
               >
                 {dateNum}

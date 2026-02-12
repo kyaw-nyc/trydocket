@@ -1,3 +1,2 @@
-export { EventDetailsSheet } from "./EventDetailsSheet";
-export { EventEditDialog } from "./EventEditDialog";
+export { EventPopover } from "./EventPopover";
 export { EventColorPicker } from "./EventColorPicker";

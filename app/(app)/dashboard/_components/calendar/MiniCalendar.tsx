@@ -24,7 +24,7 @@ function MiniCalendarComponent({
   onNextMonth,
 }: MiniCalendarProps) {
   return (
-    <div className="rounded-xl p-2">
+    <div className="rounded-xl p-2 bg-black/[0.02] dark:bg-white/[0.04]">
       <div className="flex items-center justify-between">
         <p className="text-sm font-semibold text-foreground">
           {baseDate.toLocaleString([], { month: "long", year: "numeric" })}

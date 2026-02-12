@@ -10,7 +10,7 @@ import {
   CalendarSidebar,
   CalendarGrid,
 } from "./calendar";
-import { EventDetailsSheet } from "./events";
+import { EventPopover } from "./events";
 import ChatPopup from "./ChatPopup";
 import { cn } from "@/lib/utils";
 
@@ -23,7 +23,9 @@ export default function CalendarPanel() {
   const [selectedEventDetail, setSelectedEventDetail] = useState<{
     id: string;
     calendarId?: string;
+    event?: CalendarEvent;
   } | null>(null);
+  const [popoverAnchor, setPopoverAnchor] = useState<{ x: number; y: number } | null>(null);
 
   // Check for mobile viewport
   useEffect(() => {
@@ -48,7 +50,6 @@ export default function CalendarPanel() {
   } = useCalendarNavigation();
 
   // Events hook with auto-refresh every 30 seconds
-  // Note: Shorter intervals (e.g., 5000ms) will increase Google API usage significantly
   const {
     colors,
     defaultColor,
@@ -77,13 +78,15 @@ export default function CalendarPanel() {
     setTheme(isDark ? "light" : "dark");
   }, [isDark, setTheme]);
 
-  const handleSelectEvent = useCallback((event: CalendarEvent) => {
+  const handleSelectEvent = useCallback((event: CalendarEvent, position?: { x: number; y: number }) => {
     if (event.isPending) return;
-    setSelectedEventDetail({ id: event.id, calendarId: event.calendarId });
+    setSelectedEventDetail({ id: event.id, calendarId: event.calendarId, event });
+    setPopoverAnchor(position || { x: window.innerWidth / 2, y: window.innerHeight / 2 });
   }, []);
 
   const handleCloseEventDetails = useCallback(() => {
     setSelectedEventDetail(null);
+    setPopoverAnchor(null);
   }, []);
 
   return (
@@ -130,12 +133,13 @@ export default function CalendarPanel() {
         </div>
       </div>
 
-      {/* Event Details Sheet */}
-      {selectedEventDetail && (
-        <EventDetailsSheet
-          open={!!selectedEventDetail}
+      {/* Event Popover */}
+      {selectedEventDetail && popoverAnchor && (
+        <EventPopover
           eventId={selectedEventDetail.id}
           calendarId={selectedEventDetail.calendarId}
+          initialEvent={selectedEventDetail.event}
+          anchor={popoverAnchor}
           onClose={handleCloseEventDetails}
           onUpdated={triggerRefresh}
         />

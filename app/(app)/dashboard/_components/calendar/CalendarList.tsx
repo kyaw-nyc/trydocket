@@ -26,7 +26,7 @@ function CalendarItem({
       disabled={isPreview}
       onClick={() => !isPreview && onToggle(entry.id)}
       className={cn(
-        "flex w-full items-center gap-2.5 rounded-lg px-2 py-1.5 text-left transition-colors hover:bg-accent",
+        "flex w-full items-center gap-2.5 rounded-lg px-2 py-1.5 text-left transition-colors hover:bg-black/5 dark:hover:bg-white/10",
         isPreview ? "cursor-default opacity-80" : "cursor-pointer"
       )}
     >
@@ -75,7 +75,7 @@ function CalendarListComponent({ calendars, selectedIds, onToggle }: CalendarLis
   return (
     <div className="space-y-4">
       {/* My Calendars Section */}
-      <div className="rounded-xl p-3">
+      <div className="rounded-xl p-3 bg-black/[0.03] dark:bg-white/[0.05]">
         <p className="text-xs font-semibold text-foreground">My calendars</p>
         <div className="mt-2 space-y-1">
           {myCalendars.map((entry) => (
@@ -91,7 +91,7 @@ function CalendarListComponent({ calendars, selectedIds, onToggle }: CalendarLis
 
       {/* Other Calendars Section */}
       {otherCalendars.length > 0 && (
-        <div className="rounded-xl p-3">
+        <div className="rounded-xl p-3 bg-black/[0.03] dark:bg-white/[0.05]">
           <p className="text-xs font-semibold text-foreground">Other calendars</p>
           <div className="mt-2 space-y-1">
             {otherCalendars.map((entry) => (
@@ -108,7 +108,7 @@ function CalendarListComponent({ calendars, selectedIds, onToggle }: CalendarLis
 
       {/* Pending Events */}
       {pendingCalendar && (
-        <div className="rounded-xl p-3">
+        <div className="rounded-xl p-3 bg-black/[0.03] dark:bg-white/[0.05]">
           <CalendarItem
             entry={pendingCalendar}
             checked={selectedIds.includes(pendingCalendar.id)}

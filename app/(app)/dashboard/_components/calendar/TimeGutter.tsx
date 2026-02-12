@@ -10,7 +10,7 @@ function TimeGutterComponent() {
       {HOURS.map((hour) => (
         <div
           key={hour}
-          className="absolute right-0.5 sm:right-1 text-[9px] sm:text-[11px] font-semibold text-muted-foreground"
+          className="absolute right-0.5 sm:right-1 text-[9px] sm:text-[10px] font-medium text-muted-foreground/50"
           style={{ top: hour * HOUR_HEIGHT - 10 }}
         >
           {hour > 0 && formatHour(hour)}

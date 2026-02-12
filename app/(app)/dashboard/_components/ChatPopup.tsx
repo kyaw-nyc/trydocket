@@ -249,13 +249,11 @@ export default function ChatPopup({ sidebarOpen = false, isMobile = false, calen
         body: JSON.stringify({
           messages: contextMessages,
           timezone: getUserTimezone(),
-          // Pass current pending events so AI knows what's actually pending vs confirmed
           hasPendingEvents: pendingEvents.length > 0,
           pendingEventSummaries: pendingEvents.map(e => e.summary),
           hasPendingDeletions: pendingDeletions.length > 0,
           pendingDeletionSummaries: pendingDeletions.map(d => d.summary),
           recentConfirmedEvents: lastConfirmedEvents,
-          // Pass available calendars so AI knows which calendars the user can add events to
           calendars: calendarInfo,
         }),
         signal: controller.signal,
@@ -265,99 +263,124 @@ export default function ChatPopup({ sidebarOpen = false, isMobile = false, calen
 
       if (!res.ok) throw new Error("Failed to get response");
 
-      const data = await res.json();
+      // Stream SSE response
+      const reader = res.body?.getReader();
+      if (!reader) throw new Error("No response body");
 
-      // Check if AI wants to clear pending events (e.g., user said "cancel", "nevermind")
-      if (data.clearPendingEvents === true) {
-        clearPendingEvents();
-        clearPendingDeletions(); // Also clear any pending deletions
-      }
-      if (data.clearPendingDeletions === true) {
-        clearPendingDeletions();
-      }
+      const decoder = new TextDecoder();
+      let streamedContent = "";
+      let buffer = "";
 
-      if (data.pendingEvents && Array.isArray(data.pendingEvents) && data.pendingEvents.length > 0) {
-        // Validate and filter pending events to ensure they have required fields
-        const validEvents = data.pendingEvents.filter((event: PendingEvent) => {
-          if (!event.id || !event.startDateTime || !event.endDateTime) {
-            console.warn("Invalid pending event from API:", event);
-            return false;
-          }
-          return true;
-        });
+      // Add empty assistant message that we'll fill token by token
+      setMessages((prev) => [...prev, { role: "assistant", content: "" }]);
 
-        if (validEvents.length > 0) {
-          // Enable any calendars that are not currently visible so the user can see the preview
-          if (selectedCalendarIds && onEnableCalendar) {
-            for (const event of validEvents) {
-              if (event.calendarId && !selectedCalendarIds.includes(event.calendarId)) {
-                onEnableCalendar(event.calendarId);
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        // Keep the last potentially incomplete line in buffer
+        buffer = lines.pop() || "";
+
+        for (const line of lines) {
+          if (!line.startsWith("data: ")) continue;
+          const jsonStr = line.slice(6).trim();
+          if (!jsonStr) continue;
+
+          try {
+            const event = JSON.parse(jsonStr);
+
+            if (event.type === "token" && event.content) {
+              streamedContent += event.content;
+              const captured = streamedContent;
+              setMessages((prev) => {
+                const updated = [...prev];
+                if (updated.length > 0 && updated[updated.length - 1].role === "assistant") {
+                  updated[updated.length - 1] = { role: "assistant", content: captured };
+                }
+                return updated;
+              });
+            } else if (event.type === "done") {
+              // Process structured data from done event
+              if (event.clearPendingEvents === true) {
+                clearPendingEvents();
+                clearPendingDeletions();
+              }
+              if (event.clearPendingDeletions === true) {
+                clearPendingDeletions();
+              }
+
+              if (event.pendingEvents && Array.isArray(event.pendingEvents) && event.pendingEvents.length > 0) {
+                const validEvents = event.pendingEvents.filter((ev: PendingEvent) => {
+                  if (!ev.id || !ev.startDateTime || !ev.endDateTime) return false;
+                  return true;
+                });
+
+                if (validEvents.length > 0) {
+                  if (selectedCalendarIds && onEnableCalendar) {
+                    for (const ev of validEvents) {
+                      if (ev.calendarId && !selectedCalendarIds.includes(ev.calendarId)) {
+                        onEnableCalendar(ev.calendarId);
+                      }
+                    }
+                  }
+
+                  setPendingEvents((prev: PendingEvent[]) => [...prev, ...validEvents]);
+
+                  const eventDate = new Date(validEvents[0].startDateTime);
+                  const eventHour = eventDate.getHours();
+
+                  if (eventHour >= 18) {
+                    setTimeout(() => setIsExpanded(false), 300);
+                  }
+
+                  setTimeout(() => {
+                    if (goToDate) goToDate(eventDate);
+                    setTimeout(() => setScrollToTime(eventDate), 150);
+                  }, 50);
+                }
+              }
+
+              if (event.pendingDeletions && Array.isArray(event.pendingDeletions) && event.pendingDeletions.length > 0) {
+                const validDeletions = event.pendingDeletions.filter((d: PendingDeletion) => {
+                  if (!d.eventId || !d.startDateTime || !d.endDateTime) return false;
+                  return true;
+                });
+
+                if (validDeletions.length > 0) {
+                  setPendingDeletions((prev: PendingDeletion[]) => [...prev, ...validDeletions]);
+
+                  const eventDate = new Date(validDeletions[0].startDateTime);
+                  const eventHour = eventDate.getHours();
+
+                  if (eventHour >= 18) {
+                    setTimeout(() => setIsExpanded(false), 300);
+                  }
+
+                  setTimeout(() => {
+                    if (goToDate) goToDate(eventDate);
+                    setTimeout(() => setScrollToTime(eventDate), 150);
+                  }, 50);
+                }
               }
             }
+          } catch {
+            // Ignore malformed JSON lines
           }
-
-          // Set pending events first
-          setPendingEvents((prev: PendingEvent[]) => [...prev, ...validEvents]);
-
-          const eventDate = new Date(validEvents[0].startDateTime);
-          const eventHour = eventDate.getHours();
-
-          // Auto-collapse chat if event is in the evening (after 6pm) to not block the view
-          if (eventHour >= 18) {
-            setTimeout(() => setIsExpanded(false), 300);
-          }
-
-          // Navigate to the week containing the event (with small delay for state to settle)
-          setTimeout(() => {
-            if (goToDate) {
-              goToDate(eventDate);
-            }
-            // Scroll to the time of day
-            setTimeout(() => {
-              setScrollToTime(eventDate);
-            }, 150);
-          }, 50);
         }
       }
 
-      // Handle pending deletions (similar to pending events)
-      if (data.pendingDeletions && Array.isArray(data.pendingDeletions) && data.pendingDeletions.length > 0) {
-        const validDeletions = data.pendingDeletions.filter((deletion: PendingDeletion) => {
-          if (!deletion.eventId || !deletion.startDateTime || !deletion.endDateTime) {
-            console.warn("Invalid pending deletion from API:", deletion);
-            return false;
-          }
-          return true;
-        });
-
-        if (validDeletions.length > 0) {
-          setPendingDeletions((prev: PendingDeletion[]) => [...prev, ...validDeletions]);
-
-          const eventDate = new Date(validDeletions[0].startDateTime);
-          const eventHour = eventDate.getHours();
-
-          // Auto-collapse chat if event is in the evening
-          if (eventHour >= 18) {
-            setTimeout(() => setIsExpanded(false), 300);
-          }
-
-          // Navigate to the event to be deleted
-          setTimeout(() => {
-            if (goToDate) {
-              goToDate(eventDate);
-            }
-            setTimeout(() => {
-              setScrollToTime(eventDate);
-            }, 150);
-          }, 50);
+      // Finalize content
+      const finalContent = streamedContent || "I processed your request but don't have anything to say.";
+      setMessages((prev) => {
+        const updated = [...prev];
+        if (updated.length > 0 && updated[updated.length - 1].role === "assistant") {
+          updated[updated.length - 1] = { role: "assistant", content: finalContent };
         }
-      }
-
-      // Handle empty or missing content
-      const content = data.content || "I processed your request but don't have anything to say.";
-      const assistantMessage: Message = { role: "assistant", content };
-      setMessages((prev) => [...prev, assistantMessage]);
-      // Save both user and assistant messages to history
+        return updated;
+      });
+      const assistantMessage: Message = { role: "assistant", content: finalContent };
       saveMessages([userMessage, assistantMessage]);
       triggerRefresh();
     } catch (error) {
@@ -476,8 +499,8 @@ export default function ChatPopup({ sidebarOpen = false, isMobile = false, calen
           "rounded-2xl backdrop-blur-md shadow-sm pointer-events-auto overflow-hidden transition-all duration-200",
           !isMobile && "cursor-grab active:cursor-grabbing",
           isDark
-            ? "bg-black/40 border border-white/10"
-            : "bg-white/40 border border-black/10"
+            ? "bg-white/15 border border-white/20"
+            : "bg-black/10 border border-black/10"
         )}
       >
         {/* Messages area - collapsible */}
@@ -487,7 +510,7 @@ export default function ChatPopup({ sidebarOpen = false, isMobile = false, calen
             <div
               className={cn(
                 "sticky top-0 z-10 px-3 pt-2 pb-1 flex items-center justify-between",
-                isDark ? "bg-black/40" : "bg-white/40"
+                isDark ? "bg-white/10" : "bg-black/5"
               )}
               style={{ backdropFilter: "blur(12px)" }}
             >
@@ -542,8 +565,8 @@ export default function ChatPopup({ sidebarOpen = false, isMobile = false, calen
                     "max-w-[85%] rounded-xl px-3 py-2 text-sm",
                     msg.role === "user"
                       ? isDark
-                        ? "bg-white/20 text-white"
-                        : "bg-black/10 text-gray-900"
+                        ? "bg-white/25 text-white"
+                        : "bg-black/15 text-gray-900"
                       : isDark
                         ? "bg-white/10 text-white/90"
                         : "bg-black/5 text-gray-800"
@@ -558,7 +581,7 @@ export default function ChatPopup({ sidebarOpen = false, isMobile = false, calen
                 <div
                   className={cn(
                     "flex items-center gap-2 rounded-xl px-3 py-2 text-xs",
-                    isDark ? "bg-white/10 text-white/60" : "bg-black/5 text-black/60"
+                    isDark ? "bg-white/10 text-white/70" : "bg-black/5 text-black/60"
                   )}
                 >
                   <div className="flex gap-1">
@@ -616,7 +639,7 @@ export default function ChatPopup({ sidebarOpen = false, isMobile = false, calen
               disabled={loading || !input.trim()}
               className={cn(
                 "flex h-8 w-8 shrink-0 items-center justify-center rounded-full transition-all disabled:opacity-30",
-                isDark ? "bg-white/20 text-white hover:bg-white/30" : "bg-black/10 text-black hover:bg-black/20"
+                isDark ? "bg-white/25 text-white hover:bg-white/35" : "bg-black/15 text-black hover:bg-black/25"
               )}
             >
               {loading ? (

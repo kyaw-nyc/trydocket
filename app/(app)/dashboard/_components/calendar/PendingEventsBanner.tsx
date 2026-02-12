@@ -45,7 +45,7 @@ function CalendarSelector({
       <button
         type="button"
         onClick={() => setIsOpen(!isOpen)}
-        className="flex items-center gap-1.5 rounded-md border border-border bg-background px-2 py-1 text-xs hover:bg-accent transition-colors"
+        className="flex items-center gap-1.5 rounded-lg border border-black/10 dark:border-white/10 bg-white/50 dark:bg-white/10 backdrop-blur-sm px-2 py-1 text-xs hover:bg-black/5 dark:hover:bg-white/15 transition-colors"
       >
         <div
           className="h-2.5 w-2.5 rounded-full"
@@ -55,7 +55,7 @@ function CalendarSelector({
         <ChevronDown className="h-3 w-3 text-muted-foreground" />
       </button>
       {isOpen && (
-        <div className="absolute right-0 top-full z-50 mt-1 min-w-[160px] rounded-md border border-border bg-popover p-1 shadow-md">
+        <div className="absolute right-0 top-full z-50 mt-1 min-w-[160px] rounded-xl border border-black/10 dark:border-white/10 backdrop-blur-xl bg-white/70 dark:bg-black/60 p-1.5 shadow-xl">
           {calendars.map((cal) => (
             <button
               key={cal.id}
@@ -98,7 +98,7 @@ function PendingEventsBannerComponent({ className, ownedCalendars = [] }: Pendin
   return (
     <div
       className={cn(
-        "mx-2 sm:mx-4 mt-3 flex flex-col gap-3 rounded-xl border border-border bg-card px-3 sm:px-4 py-3 md:mx-6",
+        "mx-2 sm:mx-4 mt-3 flex flex-col gap-3 rounded-xl border px-3 sm:px-4 py-3 md:mx-6 backdrop-blur-xl bg-white/60 dark:bg-black/40 border-black/10 dark:border-white/10 shadow-sm",
         className
       )}
     >

@@ -287,20 +287,20 @@ export async function POST(req: NextRequest) {
     timeZoneName: "short",
   });
 
-  const userTimezone = timezone || getUserTimezone();
-
-  // Fetch user preferences from database
+  // Fetch timezone and preferences in parallel for speed
+  let userTimezone = timezone || getUserTimezone();
   let userPreferences: UserPreference[] = [];
-  try {
-    const { data: prefs } = await supabase
-      .from("user_preferences")
-      .select("key, value")
-      .eq("user_id", user.id);
-    if (prefs) {
-      userPreferences = prefs as UserPreference[];
-    }
-  } catch (error) {
-    console.error("Failed to fetch user preferences:", error);
+
+  const [profileResult, prefsResult] = await Promise.allSettled([
+    supabase.from("profiles").select("timezone").eq("id", user.id).single(),
+    supabase.from("user_preferences").select("key, value").eq("user_id", user.id),
+  ]);
+
+  if (profileResult.status === "fulfilled" && profileResult.value.data?.timezone) {
+    userTimezone = profileResult.value.data.timezone;
+  }
+  if (prefsResult.status === "fulfilled" && prefsResult.value.data) {
+    userPreferences = prefsResult.value.data as UserPreference[];
   }
 
   // Build pending events context for the AI - THIS IS CRITICAL FOR CORRECT BEHAVIOR
@@ -346,32 +346,183 @@ These deletions are previews. Use cancel_pending_deletions to remove the deletio
   let shouldClearPendingEvents = false;
   let shouldClearPendingDeletions = false;
 
-  // Function-calling loop: keep calling until we get a final text response
+  // Helper: create SSE response from content + metadata
+  function createSSEResponse(content: string) {
+    const encoder = new TextEncoder();
+    const readable = new ReadableStream({
+      start(controller) {
+        controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: "token", content })}\n\n`));
+        controller.enqueue(encoder.encode(`data: ${JSON.stringify({
+          type: "done",
+          pendingEvents: pendingEvents.length > 0 ? pendingEvents : undefined,
+          pendingDeletions: pendingDeletions.length > 0 ? pendingDeletions : undefined,
+          clearPendingEvents: shouldClearPendingEvents || undefined,
+          clearPendingDeletions: shouldClearPendingDeletions || undefined,
+        })}\n\n`));
+        controller.close();
+      },
+    });
+    return new Response(readable, {
+      headers: { "Content-Type": "text/event-stream", "Cache-Control": "no-cache", Connection: "keep-alive" },
+    });
+  }
+
+  // Helper: create SSE response from a streaming OpenAI response
+  function createStreamingSSEResponse(stream: AsyncIterable<{ choices: Array<{ delta?: { content?: string | null; tool_calls?: unknown } }> }>) {
+    const encoder = new TextEncoder();
+    const readable = new ReadableStream({
+      async start(controller) {
+        try {
+          for await (const chunk of stream) {
+            const delta = chunk.choices[0]?.delta;
+            if (delta?.tool_calls) continue;
+            if (delta?.content) {
+              controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: "token", content: delta.content })}\n\n`));
+            }
+          }
+        } catch {
+          // Stream error — metadata still sent below
+        }
+        controller.enqueue(encoder.encode(`data: ${JSON.stringify({
+          type: "done",
+          pendingEvents: pendingEvents.length > 0 ? pendingEvents : undefined,
+          pendingDeletions: pendingDeletions.length > 0 ? pendingDeletions : undefined,
+          clearPendingEvents: shouldClearPendingEvents || undefined,
+          clearPendingDeletions: shouldClearPendingDeletions || undefined,
+        })}\n\n`));
+        controller.close();
+      },
+    });
+    return new Response(readable, {
+      headers: { "Content-Type": "text/event-stream", "Cache-Control": "no-cache", Connection: "keep-alive" },
+    });
+  }
+
+  // Function-calling loop: tool calls are non-streaming, final response is streamed
   const maxIterations = 10;
   for (let i = 0; i < maxIterations; i++) {
+    // On the last possible iteration or when we expect a text reply, use streaming
+    // For tool-calling iterations, use non-streaming for speed
+    const isLastToolIteration = i > 0; // After first tool call, try streaming to avoid double-call
+    const useStreaming = isLastToolIteration;
+
+    if (useStreaming) {
+      // Stream the response — handles both tool calls and text in one pass
+      const stream = await openai.chat.completions.create({
+        model: "gpt-4o",
+        messages: conversationMessages,
+        tools: calendarTools,
+        temperature: 0.2,
+        stream: true,
+      });
+
+      // Collect the full response to check for tool calls
+      let streamedContent = "";
+      const toolCalls: Array<{ id: string; type: string; function: { name: string; arguments: string } }> = [];
+      const toolCallBuffers: Record<number, { id: string; type: string; name: string; args: string }> = {};
+
+      for await (const chunk of stream) {
+        const delta = chunk.choices[0]?.delta;
+        if (delta?.content) {
+          streamedContent += delta.content;
+        }
+        if (delta?.tool_calls) {
+          for (const tc of delta.tool_calls) {
+            if (!toolCallBuffers[tc.index]) {
+              toolCallBuffers[tc.index] = { id: tc.id || "", type: tc.type || "function", name: tc.function?.name || "", args: "" };
+            }
+            if (tc.id) toolCallBuffers[tc.index].id = tc.id;
+            if (tc.function?.name) toolCallBuffers[tc.index].name = tc.function.name;
+            if (tc.function?.arguments) toolCallBuffers[tc.index].args += tc.function.arguments;
+          }
+        }
+      }
+
+      // Reassemble tool calls
+      for (const idx of Object.keys(toolCallBuffers).sort((a, b) => Number(a) - Number(b))) {
+        const buf = toolCallBuffers[Number(idx)];
+        toolCalls.push({ id: buf.id, type: buf.type, function: { name: buf.name, arguments: buf.args } });
+      }
+
+      if (toolCalls.length === 0) {
+        // No tool calls — this is the final text response, send it immediately
+        return createSSEResponse(streamedContent);
+      }
+
+      // Has tool calls — process them and continue the loop
+      conversationMessages.push({
+        role: "assistant",
+        content: streamedContent || null,
+        tool_calls: toolCalls.map(tc => ({
+          id: tc.id,
+          type: tc.type as "function",
+          function: { name: tc.function.name, arguments: tc.function.arguments },
+        })),
+      });
+
+      // Execute tool calls (same logic as non-streaming path below)
+      for (const toolCall of toolCalls) {
+        const rawArgs = JSON.parse(toolCall.function.arguments);
+        let toolResult: { result: string; pendingEvent?: PendingEventData; pendingDeletion?: PendingDeletionData; clearPendingEvents?: boolean; clearPendingDeletions?: boolean };
+
+        try {
+          if (toolCall.function.name === "save_preference") {
+            const { key, value } = rawArgs as { key: string; value: string };
+            if (key && value) {
+              const { error } = await supabase.from("user_preferences").upsert(
+                { user_id: user.id, key, value, updated_at: new Date().toISOString() },
+                { onConflict: "user_id,key" }
+              );
+              toolResult = error
+                ? { result: JSON.stringify({ error: `Failed to save preference: ${error.message}` }) }
+                : { result: JSON.stringify({ success: true, message: `Saved preference: ${key} = "${value}".` }) };
+            } else {
+              toolResult = { result: JSON.stringify({ error: "Both key and value are required" }) };
+            }
+            conversationMessages.push({ role: "tool", tool_call_id: toolCall.id, content: toolResult.result });
+            continue;
+          }
+
+          const args = validateToolArgs(toolCall.function.name, rawArgs);
+          toolResult = await executeCalendarTool(toolCall.function.name, args, accessToken, userTimezone);
+
+          if (toolResult.pendingEvent) {
+            const colorId = selectColorId(
+              pendingEvents.map((e) => ({ startDateTime: e.startDateTime, endDateTime: e.endDateTime, colorId: e.colorId })),
+              toolResult.pendingEvent.startDateTime
+            );
+            pendingEvents.push({ ...toolResult.pendingEvent, colorId });
+          }
+          if (toolResult.pendingDeletion) pendingDeletions.push(toolResult.pendingDeletion);
+          if (toolResult.clearPendingEvents) shouldClearPendingEvents = true;
+          if (toolResult.clearPendingDeletions) shouldClearPendingDeletions = true;
+        } catch (error) {
+          toolResult = error instanceof ZodError
+            ? { result: JSON.stringify({ error: `Invalid arguments for ${toolCall.function.name}`, issues: error.issues }) }
+            : { result: JSON.stringify({ error: `Failed to execute ${toolCall.function.name}: ${error instanceof Error ? error.message : "Unknown error"}` }) };
+        }
+
+        conversationMessages.push({ role: "tool", tool_call_id: toolCall.id, content: toolResult.result });
+      }
+      continue;
+    }
+
+    // Non-streaming path (first iteration — usually needs tool calls)
     const response = await openai.chat.completions.create({
       model: "gpt-4o",
       messages: conversationMessages,
       tools: calendarTools,
-      temperature: 0.2, // Low temperature for precise date/time handling
+      temperature: 0.2,
     });
 
     const choice = response.choices[0];
     const message = choice.message;
 
-    // Add assistant message to conversation
     conversationMessages.push(message);
 
-    // If no tool calls, we're done
+    // If no tool calls, we already have the complete response — send it instantly
     if (!message.tool_calls || message.tool_calls.length === 0) {
-      return NextResponse.json({
-        role: "assistant",
-        content: message.content,
-        pendingEvents: pendingEvents.length > 0 ? pendingEvents : undefined,
-        pendingDeletions: pendingDeletions.length > 0 ? pendingDeletions : undefined,
-        clearPendingEvents: shouldClearPendingEvents || undefined,
-        clearPendingDeletions: shouldClearPendingDeletions || undefined,
-      });
+      return createSSEResponse(message.content || "");
     }
 
     // Execute each tool call and add results to conversation
@@ -491,12 +642,28 @@ These deletions are previews. Use cancel_pending_deletions to remove the deletio
     }
   }
 
-  return NextResponse.json({
-    role: "assistant",
-    content: "I'm sorry, I wasn't able to complete that request. Please try again.",
-    pendingEvents: pendingEvents.length > 0 ? pendingEvents : undefined,
-    pendingDeletions: pendingDeletions.length > 0 ? pendingDeletions : undefined,
-    clearPendingEvents: shouldClearPendingEvents || undefined,
-    clearPendingDeletions: shouldClearPendingDeletions || undefined,
+  // Fallback: stream a failure message
+  const encoder = new TextEncoder();
+  const readable = new ReadableStream({
+    start(controller) {
+      const fallbackContent = "I'm sorry, I wasn't able to complete that request. Please try again.";
+      controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: "token", content: fallbackContent })}\n\n`));
+      controller.enqueue(encoder.encode(`data: ${JSON.stringify({
+        type: "done",
+        pendingEvents: pendingEvents.length > 0 ? pendingEvents : undefined,
+        pendingDeletions: pendingDeletions.length > 0 ? pendingDeletions : undefined,
+        clearPendingEvents: shouldClearPendingEvents || undefined,
+        clearPendingDeletions: shouldClearPendingDeletions || undefined,
+      })}\n\n`));
+      controller.close();
+    },
+  });
+
+  return new Response(readable, {
+    headers: {
+      "Content-Type": "text/event-stream",
+      "Cache-Control": "no-cache",
+      Connection: "keep-alive",
+    },
   });
 }

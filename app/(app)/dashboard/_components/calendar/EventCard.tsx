@@ -15,7 +15,7 @@ type EventCardProps = {
   item: PositionedEvent;
   colors: ColorsMap;
   defaultColor: string | null;
-  onSelect: (event: CalendarEvent) => void;
+  onSelect: (event: CalendarEvent, position?: { x: number; y: number }) => void;
 };
 
 function EventCardComponent({ item, colors, defaultColor, onSelect }: EventCardProps) {
@@ -45,9 +45,9 @@ function EventCardComponent({ item, colors, defaultColor, onSelect }: EventCardP
 
   const isDark = theme === "dark";
 
-  const handleClick = () => {
+  const handleClick = (e: React.MouseEvent) => {
     if (event.isPending || event.isPendingDeletion) return;
-    onSelect(event);
+    onSelect(event, { x: e.clientX, y: e.clientY });
   };
 
   // Event marked for deletion - show deletion styling (banner only on first event)
@@ -77,7 +77,7 @@ function EventCardComponent({ item, colors, defaultColor, onSelect }: EventCardP
             }`}
             style={{ top: 0 }}
           >
-            <div className={`${bannerBg} ${bannerText} rounded-xl shadow-2xl px-3 py-2.5 flex flex-col gap-2 min-w-[140px]`}>
+            <div className={`${bannerText} rounded-xl shadow-2xl px-3 py-2.5 flex flex-col gap-2 min-w-[140px] backdrop-blur-xl ${isDark ? "bg-red-600/80" : "bg-red-500/90"} border ${isDark ? "border-red-400/20" : "border-red-600/20"}`}>
               <div className="flex items-center gap-2">
                 <Trash2 className="h-4 w-4" />
                 <span className="font-semibold text-sm">Delete {pendingDeletions.length > 1 ? `${pendingDeletions.length} events` : "this event"}?</span>
@@ -185,9 +185,9 @@ function EventCardComponent({ item, colors, defaultColor, onSelect }: EventCardP
             }`}
             style={{ top: 0 }}
           >
-            <div className={`${bannerBg} ${bannerText} rounded-xl shadow-2xl px-3 py-2.5 flex flex-col gap-2 min-w-[140px]`}>
+            <div className={`${bannerText} rounded-xl shadow-2xl px-3 py-2.5 flex flex-col gap-2 min-w-[140px] backdrop-blur-xl ${isDark ? "bg-white/15 border border-white/20" : "bg-black/70 border border-black/10"}`}>
               <div className="flex items-center gap-2">
-                <div className={`h-2 w-2 rounded-full ${isDark ? "bg-gray-900" : "bg-white"} animate-pulse`} />
+                <div className={`h-2 w-2 rounded-full ${isDark ? "bg-white" : "bg-white"} animate-pulse`} />
                 <span className="font-semibold text-sm">{addLabel}</span>
               </div>
               <div className="flex items-center gap-2">
@@ -269,7 +269,7 @@ function EventCardComponent({ item, colors, defaultColor, onSelect }: EventCardP
     <div
       onClick={handleClick}
       className={cn(
-        "absolute overflow-hidden rounded-md sm:rounded-lg text-xs transition-colors touch-manipulation cursor-pointer hover:shadow-md active:scale-[0.98] event-card-hover",
+        "absolute overflow-hidden rounded-lg text-xs transition-all touch-manipulation cursor-pointer hover:shadow-sm active:scale-[0.98] event-card-hover",
         isCompact ? "px-1 py-0.5" : "px-1.5 sm:px-2.5 py-1 sm:py-1.5"
       )}
       style={{

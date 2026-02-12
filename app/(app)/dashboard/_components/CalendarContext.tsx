@@ -2,6 +2,7 @@
 
 import { createContext, useContext, useState, useCallback, useEffect, ReactNode } from "react";
 import { ThemeSelectionModal } from "./ThemeSelectionModal";
+import { OnboardingModal } from "./OnboardingModal";
 
 const THEME_STORAGE_KEY = "docket:theme";
 
@@ -28,6 +29,7 @@ export type PendingDeletion = {
   summary: string;
   startDateTime: string;
   endDateTime: string;
+  scope?: "this" | "all";
 };
 
 type GoToDateFn = (date: Date) => void;
@@ -80,6 +82,7 @@ export function CalendarProvider({ children }: { children: ReactNode }) {
   const [goToDateFn, setGoToDateFn] = useState<GoToDateFn | null>(null);
   const [scrollToTime, setScrollToTime] = useState<Date | null>(null);
   const [showThemeModal, setShowThemeModal] = useState(false);
+  const [showOnboarding, setShowOnboarding] = useState(false);
   const [isLoadingTheme, setIsLoadingTheme] = useState(true);
 
   // Fetch theme from database on mount
@@ -130,6 +133,23 @@ export function CalendarProvider({ children }: { children: ReactNode }) {
     fetchTheme();
   }, []);
 
+  // Check if onboarding is needed
+  const checkOnboarding = useCallback(async () => {
+    try {
+      const res = await fetch("/api/user/preferences");
+      if (res.ok) {
+        const data = await res.json();
+        const prefs = data.preferences || [];
+        const hasOnboarding = prefs.some((p: { key: string }) => p.key === "onboarding_completed");
+        if (!hasOnboarding) {
+          setShowOnboarding(true);
+        }
+      }
+    } catch {
+      // Ignore - don't block user
+    }
+  }, []);
+
   // Handle theme selection from modal
   const handleThemeSelect = useCallback(async (selectedTheme: "light" | "dark") => {
     setThemeState(selectedTheme);
@@ -146,6 +166,42 @@ export function CalendarProvider({ children }: { children: ReactNode }) {
     } catch {
       // Ignore errors - localStorage will serve as fallback
     }
+
+    // Check if onboarding needed after theme selection
+    checkOnboarding();
+  }, [checkOnboarding]);
+
+  // Also check onboarding on mount for returning users who have a theme but no onboarding
+  useEffect(() => {
+    if (!isLoadingTheme && !showThemeModal) {
+      checkOnboarding();
+    }
+  }, [isLoadingTheme, showThemeModal, checkOnboarding]);
+
+  // Sync detected timezone to profiles on mount
+  useEffect(() => {
+    const syncTimezone = async () => {
+      try {
+        const detected = Intl.DateTimeFormat().resolvedOptions().timeZone;
+        if (detected) {
+          const res = await fetch("/api/user/timezone");
+          if (res.ok) {
+            const data = await res.json();
+            if (!data.timezone) {
+              // No timezone stored yet, save detected one
+              await fetch("/api/user/timezone", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ timezone: detected }),
+              });
+            }
+          }
+        }
+      } catch {
+        // Ignore
+      }
+    };
+    syncTimezone();
   }, []);
 
   // Wrapper to save theme to both localStorage and database when it changes
@@ -300,6 +356,9 @@ export function CalendarProvider({ children }: { children: ReactNode }) {
       }}
     >
       {showThemeModal && <ThemeSelectionModal onSelect={handleThemeSelect} />}
+      {showOnboarding && !showThemeModal && (
+        <OnboardingModal isDark={theme === "dark"} onComplete={() => setShowOnboarding(false)} />
+      )}
       {children}
     </CalendarContext.Provider>
   );

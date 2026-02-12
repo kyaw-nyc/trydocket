@@ -63,7 +63,7 @@
   --accent: oklch(0.97 0 0);
   --accent-foreground: oklch(0.205 0 0);
   --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.922 0 0);
+  --border: oklch(0.922 0 0 / 70%);
   --input: oklch(0.922 0 0);
   --ring: oklch(0.708 0 0);
   --chart-1: oklch(0.646 0.222 41.116);
@@ -77,8 +77,18 @@
   --sidebar-primary-foreground: oklch(0.985 0 0);
   --sidebar-accent: oklch(0.97 0 0);
   --sidebar-accent-foreground: oklch(0.205 0 0);
-  --sidebar-border: oklch(0.922 0 0);
+  --sidebar-border: oklch(0.922 0 0 / 50%);
   --sidebar-ring: oklch(0.708 0 0);
+
+  /* Glass surface variables */
+  --glass-bg: oklch(1 0 0 / 60%);
+  --glass-border: oklch(0 0 0 / 6%);
+  --glass-blur: 16px;
+
+  /* Glass surface variants */
+  --glass-bg-subtle: oklch(0 0 0 / 3%);
+  --glass-bg-medium: oklch(0 0 0 / 5%);
+  --glass-hover: oklch(0 0 0 / 8%);
 }
 
 .dark {
@@ -97,8 +107,8 @@
   --accent: oklch(0.269 0 0);
   --accent-foreground: oklch(0.985 0 0);
   --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
+  --border: oklch(1 0 0 / 8%);
+  --input: oklch(1 0 0 / 12%);
   --ring: oklch(0.556 0 0);
   --chart-1: oklch(0.488 0.243 264.376);
   --chart-2: oklch(0.696 0.17 162.48);
@@ -111,8 +121,16 @@
   --sidebar-primary-foreground: oklch(0.985 0 0);
   --sidebar-accent: oklch(0.269 0 0);
   --sidebar-accent-foreground: oklch(0.985 0 0);
-  --sidebar-border: oklch(1 0 0 / 10%);
+  --sidebar-border: oklch(1 0 0 / 8%);
   --sidebar-ring: oklch(0.556 0 0);
+
+  --glass-bg: oklch(0 0 0 / 40%);
+  --glass-border: oklch(1 0 0 / 10%);
+  --glass-blur: 16px;
+
+  --glass-bg-subtle: oklch(1 0 0 / 5%);
+  --glass-bg-medium: oklch(1 0 0 / 8%);
+  --glass-hover: oklch(1 0 0 / 12%);
 }
 
 @layer base {
@@ -127,15 +145,15 @@
 /* Calendar-specific theme variables */
 :root {
   --calendar-bg: oklch(1 0 0);
-  --calendar-border: oklch(0.922 0 0);
+  --calendar-border: oklch(0.922 0 0 / 70%);
   --calendar-text: oklch(0.145 0 0);
   --calendar-muted: oklch(0.556 0 0);
   --calendar-hover: oklch(0.97 0 0);
   --event-default: oklch(0.588 0.158 241.966);
   --event-pending: oklch(0.585 0.233 277.117);
   --time-indicator: oklch(0.577 0.245 27.325);
-  --calendar-today-bg: oklch(0.488 0.243 264.376 / 0.05);
-  --calendar-week-highlight: oklch(0.488 0.243 264.376 / 0.1);
+  --calendar-today-bg: oklch(0.488 0.243 264.376 / 0.04);
+  --calendar-week-highlight: oklch(0.488 0.243 264.376 / 0.08);
 }
 
 .dark {
@@ -147,11 +165,54 @@
   --event-default: oklch(0.588 0.158 241.966);
   --event-pending: oklch(0.585 0.233 277.117);
   --time-indicator: oklch(0.704 0.191 22.216);
-  --calendar-today-bg: oklch(0.488 0.243 264.376 / 0.08);
-  --calendar-week-highlight: oklch(0.488 0.243 264.376 / 0.15);
+  --calendar-today-bg: oklch(0.488 0.243 264.376 / 0.06);
+  --calendar-week-highlight: oklch(0.488 0.243 264.376 / 0.12);
 }
 
 /* Event card hover effect using CSS instead of JS state */
 .event-card-hover:hover {
   background-color: var(--event-hover-bg) !important;
+}
+
+/* Popover animations */
+@keyframes popover-in {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes popover-out {
+  from {
+    opacity: 1;
+    transform: scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+}
+
+/* Glass utility class for reusable glassmorphism */
+.glass {
+  background: var(--glass-bg);
+  border-color: var(--glass-border);
+  backdrop-filter: blur(var(--glass-blur));
+  -webkit-backdrop-filter: blur(var(--glass-blur));
+}
+
+.glass-subtle {
+  background: var(--glass-bg-subtle);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+
+/* Smooth global transitions */
+* {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }

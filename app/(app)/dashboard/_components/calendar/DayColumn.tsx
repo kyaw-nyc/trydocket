@@ -15,7 +15,7 @@ type DayColumnProps = {
   defaultColor: string | null;
   currentTimePos: number;
   showTimeLine: boolean;
-  onSelectEvent: (event: CalendarEvent) => void;
+  onSelectEvent: (event: CalendarEvent, position?: { x: number; y: number }) => void;
 };
 
 function DayColumnComponent({
@@ -32,13 +32,13 @@ function DayColumnComponent({
 
   return (
     <div className="relative flex-1 min-w-0">
-      {/* Vertical day line - full height, single element so it stays straight */}
-      <div className="absolute left-0 top-0 bottom-0 w-px bg-border z-0" aria-hidden />
+      {/* Vertical day line */}
+      <div className="absolute left-0 top-0 bottom-0 w-px bg-border/30 z-0" aria-hidden />
       {/* Hour lines */}
       {HOURS.map((hour) => (
         <div
           key={hour}
-          className="absolute left-0 right-0 w-full border-t border-border/40 z-0"
+          className="absolute left-0 right-0 w-full border-t border-border/20 z-0"
           style={{ top: hour * HOUR_HEIGHT }}
         />
       ))}

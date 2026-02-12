@@ -102,7 +102,7 @@ function CalendarSidebarComponent({
   return (
     <aside
       className={cn(
-        "hidden w-60 shrink-0 md:flex md:flex-col bg-background transition-all duration-200 overflow-hidden",
+        "hidden w-60 shrink-0 md:flex md:flex-col backdrop-blur-md bg-white/50 dark:bg-black/30 transition-all duration-200 overflow-hidden border-r border-black/[0.06] dark:border-white/[0.06]",
         isOpen ? "w-60" : "w-0"
       )}
     >

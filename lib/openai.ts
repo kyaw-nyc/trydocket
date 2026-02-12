@@ -183,7 +183,7 @@ const AMBIGUITY_RULES = `## Date & Time Interpretation
 - "this weekend" = the upcoming Saturday and Sunday in the user's timezone
 - "in X hours/minutes" = add duration from now in the user's timezone
 - "end of day" default 5:00 PM in the user's timezone unless context suggests otherwise; confirm if uncertain
-- Default duration when missing: 30 minutes (user may override)
+- Default duration when missing: use the user's preferred_meeting_duration preference if set, otherwise 30 minutes
 - All-day events: use date-only start, end = next day per RFC 5545; no times
 - Multi-day timed events: ensure end is after start and spans days explicitly
 - If ambiguity remains (date, timezone, or duration), ask one concise clarifying question before calling tools`;
@@ -242,11 +242,11 @@ export type UserPreference = {
 };
 
 const PREFERENCES_GUIDANCE = `## User Preferences
-- When the user expresses a scheduling preference (e.g., "I prefer morning meetings", "no meetings after 5pm", "I like 30-minute meetings"), use save_preference to remember it
+- When the user expresses a scheduling preference (e.g., "I prefer morning events", "nothing after 5pm", "I like 30-minute blocks"), use save_preference to remember it
 - Preferences persist across conversations and survive chat clearing
 - Apply saved preferences when proposing events (e.g., if user prefers mornings, suggest morning times)
 - Only save clear, actionable preferences - not one-time requests
-- Common preference keys: preferred_meeting_duration, preferred_time_of_day, no_meetings_before, no_meetings_after, default_meeting_buffer, work_hours_start, work_hours_end`;
+- Common preference keys: preferred_meeting_duration, preferred_time_of_day, no_events_before, no_events_after, default_event_buffer`;
 
 /**
  * Build the system prompt with strong calendar safety guardrails.
@@ -278,6 +278,12 @@ export function getSystemPrompt(
       .join("\n");
     contextParts.push(`- User's saved preferences:\n${prefList}`);
     contextParts.push(`- Apply these preferences when scheduling (e.g., respect preferred times, durations).`);
+
+    // Extract specific preferences for richer context
+    const location = preferences.find((p) => p.key === "location")?.value;
+    if (location) {
+      contextParts.push(`- User's location: ${location}. Use this for location-aware suggestions when relevant.`);
+    }
   }
 
   if (recentConfirmedEvents && recentConfirmedEvents.length > 0) {

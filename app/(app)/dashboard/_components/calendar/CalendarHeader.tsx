@@ -56,33 +56,38 @@ function CalendarHeaderComponent({
     router.push("/landing");
   };
 
+  const iconBtnClass = cn(
+    "h-8 w-8 rounded-full cursor-pointer transition-colors",
+    isDark
+      ? "text-white/70 hover:text-white hover:bg-white/10"
+      : "text-foreground/70 hover:text-foreground hover:bg-black/5"
+  );
+
   return (
-    <header className={cn(
-      "flex items-center justify-between px-4 py-3 md:px-6",
-      isDark ? "bg-background" : "bg-white"
-    )}>
+    <header
+      className={cn(
+        "flex items-center justify-between px-4 py-2.5 md:px-6 backdrop-blur-xl border-b transition-colors",
+        isDark
+          ? "bg-black border-white/[0.08]"
+          : "bg-white/60 border-black/[0.06]"
+      )}
+    >
       <div className="flex items-center gap-2 md:gap-3">
         <Button
           variant="ghost"
           size="icon"
-          className={cn(
-            "rounded-full cursor-pointer",
-            isDark && "text-white hover:bg-white/10 hover:text-white"
-          )}
+          className={iconBtnClass}
           onClick={onToggleSidebar}
           aria-label="Toggle sidebar"
         >
           <Menu className="h-4 w-4" />
         </Button>
 
-        <div className="flex items-center gap-1 md:gap-2">
+        <div className="flex items-center gap-0.5">
           <Button
             variant="ghost"
             size="icon"
-            className={cn(
-              "rounded-full cursor-pointer",
-              isDark && "text-white hover:bg-white/10 hover:text-white"
-            )}
+            className={iconBtnClass}
             onClick={onPreviousWeek}
             aria-label="Previous week"
           >
@@ -91,10 +96,7 @@ function CalendarHeaderComponent({
           <Button
             variant="ghost"
             size="icon"
-            className={cn(
-              "rounded-full cursor-pointer",
-              isDark && "text-white hover:bg-white/10 hover:text-white"
-            )}
+            className={iconBtnClass}
             onClick={onNextWeek}
             aria-label="Next week"
           >
@@ -103,10 +105,10 @@ function CalendarHeaderComponent({
         </div>
 
         <div className="ml-1 hidden sm:flex flex-col leading-tight">
-          <span className="text-lg font-semibold text-foreground truncate max-w-[200px] md:max-w-none">
+          <span className="text-base font-semibold text-foreground truncate max-w-[200px] md:max-w-none">
             {weekLabel}
           </span>
-          <span className="text-xs text-muted-foreground">Week view</span>
+          <span className="text-[11px] text-muted-foreground/70">Week view</span>
         </div>
 
         {!isViewingCurrentWeek && (
@@ -114,24 +116,23 @@ function CalendarHeaderComponent({
             variant="outline"
             size="sm"
             className={cn(
-              "rounded-full px-3 py-1.5 text-sm font-semibold cursor-pointer",
-              isDark && "border-white text-white hover:bg-white/10 hover:text-white"
+              "rounded-full px-4 py-1 text-xs font-semibold cursor-pointer transition-all backdrop-blur-sm",
+              isDark
+                ? "border-white/15 bg-white/10 text-white/80 hover:bg-white/20 hover:text-white"
+                : "border-black/10 bg-black/5 text-foreground/80 hover:bg-black/10 hover:text-foreground"
             )}
             onClick={onToday}
           >
-            Go back to Today
+            Today
           </Button>
         )}
       </div>
 
-      <div className="flex items-center gap-2 md:gap-3">
+      <div className="flex items-center gap-1 md:gap-2">
         <Button
           variant="ghost"
           size="icon"
-          className={cn(
-            "rounded-full cursor-pointer",
-            isDark && "text-white hover:bg-white/10 hover:text-white"
-          )}
+          className={iconBtnClass}
           onClick={onRefresh}
           disabled={loading}
           title="Refresh"
@@ -144,13 +145,10 @@ function CalendarHeaderComponent({
             <Button
               variant="ghost"
               size="icon"
-              className={cn(
-                "rounded-full cursor-pointer",
-                isDark && "text-white hover:bg-white/10 hover:text-white"
-              )}
+              className={iconBtnClass}
               title="Settings"
             >
-              <Settings className="h-5 w-5" />
+              <Settings className="h-4 w-4" />
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-44">
