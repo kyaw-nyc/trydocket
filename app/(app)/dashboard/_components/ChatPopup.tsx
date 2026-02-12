@@ -599,7 +599,10 @@ export default function ChatPopup({ sidebarOpen = false, isMobile = false, calen
 
         {/* Input area */}
         <form onSubmit={handleSubmit}>
-          <div className="flex items-end gap-2 px-3 py-3">
+          <div className={cn(
+            "flex items-end gap-2 px-3 py-3 rounded-b-2xl",
+            isDark ? "bg-black/40" : "bg-white/50"
+          )}>
             {/* Expand button - only show when collapsed and has messages */}
             {hasMessages && !isExpanded && (
               <button
