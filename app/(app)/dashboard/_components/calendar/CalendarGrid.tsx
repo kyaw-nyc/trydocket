@@ -335,7 +335,7 @@ function CalendarGridComponent({
                 events={getEventsWithOverrides(date)}
                 colors={colors}
                 defaultColor={defaultColor}
-                currentTimePos={currentTimePos}
+                currentTimePos={todayIndex === dayIndex ? currentTimePos : 0}
                 showTimeLine={todayIndex === dayIndex}
                 onSelectEvent={handleSelectEvent}
                 onDragStart={handlePointerDown}

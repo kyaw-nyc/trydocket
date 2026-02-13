@@ -64,6 +64,7 @@ export function useEventDrag({
     originY: number;
     originalTop: number;
     originalHeight: number;
+    cachedColRects: { left: number; right: number; width: number; gridLeft: number }[];
   } | null>(null);
 
   const cleanUp = useCallback(() => {
@@ -81,9 +82,28 @@ export function useEventDrag({
     ) => {
       if (item.event.isPending || item.event.isPendingDeletion) return;
       if (e.button !== 0 && e.pointerType === "mouse") return;
+      // Guard: prevent starting a new drag while one is already active
+      if (dragRef.current?.active) return;
 
       e.preventDefault();
       e.stopPropagation();
+
+      // Cache column rects at drag start to avoid layout thrashing during move
+      const cachedColRects: { left: number; right: number; width: number; gridLeft: number }[] = [];
+      const cols = dayColumnRefs.current;
+      if (cols) {
+        const gridContainer = cols[0]?.parentElement;
+        const gridLeft = gridContainer ? gridContainer.getBoundingClientRect().left : 0;
+        for (let i = 0; i < cols.length; i++) {
+          const col = cols[i];
+          if (col) {
+            const r = col.getBoundingClientRect();
+            cachedColRects.push({ left: r.left, right: r.right, width: r.width, gridLeft });
+          } else {
+            cachedColRects.push({ left: 0, right: 0, width: 0, gridLeft: 0 });
+          }
+        }
+      }
 
       dragRef.current = {
         active: true,
@@ -96,6 +116,7 @@ export function useEventDrag({
         originY: e.clientY,
         originalTop: item.top,
         originalHeight: item.height,
+        cachedColRects,
       };
 
       const onMove = (me: PointerEvent) => {
@@ -141,27 +162,19 @@ export function useEventDrag({
           overlay.style.top = `${snappedTop}px`;
           overlay.style.height = `${dr.originalHeight}px`;
 
-          const cols = dayColumnRefs.current;
-          if (cols) {
-            for (let i = 0; i < cols.length; i++) {
-              const col = cols[i];
-              if (!col) continue;
-              const rect = col.getBoundingClientRect();
-              if (me.clientX >= rect.left && me.clientX <= rect.right) {
-                if (dr.currentDayIndex !== i) {
-                  dr.currentDayIndex = i;
-                  const gridContainer = col.parentElement;
-                  if (gridContainer) {
-                    const gridRect = gridContainer.getBoundingClientRect();
-                    overlay.style.left = `${rect.left - gridRect.left}px`;
-                    overlay.style.width = `${rect.width}px`;
-                  }
-                  setDragState((prev) =>
-                    prev ? { ...prev, currentDayIndex: i } : prev
-                  );
-                }
-                break;
+          const cachedRects = dr.cachedColRects;
+          for (let i = 0; i < cachedRects.length; i++) {
+            const cr = cachedRects[i];
+            if (me.clientX >= cr.left && me.clientX <= cr.right) {
+              if (dr.currentDayIndex !== i) {
+                dr.currentDayIndex = i;
+                overlay.style.left = `${cr.left - cr.gridLeft}px`;
+                overlay.style.width = `${cr.width}px`;
+                setDragState((prev) =>
+                  prev ? { ...prev, currentDayIndex: i } : prev
+                );
               }
+              break;
             }
           }
 

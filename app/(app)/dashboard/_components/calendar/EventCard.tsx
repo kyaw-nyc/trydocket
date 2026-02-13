@@ -279,7 +279,7 @@ function EventCardComponent({ item, colors, defaultColor, onSelect, onDragStart,
     <div
       onPointerDown={handlePointerDownMove}
       className={cn(
-        "absolute overflow-hidden rounded-lg text-xs transition-all cursor-grab hover:shadow-sm active:cursor-grabbing event-card-hover select-none",
+        "absolute overflow-hidden rounded-lg text-xs transition-colors transition-shadow cursor-grab hover:shadow-sm active:cursor-grabbing event-card-hover select-none",
         isCompact ? "px-1 py-0.5" : "px-1.5 sm:px-2.5 py-1 sm:py-1.5",
         isDragTarget && "pointer-events-none opacity-0"
       )}
