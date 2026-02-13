@@ -18,8 +18,8 @@ export function getEventPosition(
   if (!startDateTime) return null;
 
   const start = new Date(startDateTime);
-  const startMinutes = start.getHours() * 60 + start.getMinutes();
-  const top = (startMinutes / 60) * HOUR_HEIGHT;
+  const totalSeconds = start.getHours() * 3600 + start.getMinutes() * 60 + start.getSeconds();
+  const top = (totalSeconds / 3600) * HOUR_HEIGHT;
 
   let durationMinutes = 60;
   const endDateTime = "end" in event && event.end && "dateTime" in event.end

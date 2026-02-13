@@ -10,6 +10,9 @@ import { DayColumn } from "./DayColumn";
 import { useCalendar } from "../CalendarContext";
 import { useEventDrag, type DragState } from "../hooks/useEventDrag";
 import { cn } from "@/lib/utils";
+import { RecurringScopeDialog } from "./RecurringScopeDialog";
+
+type RecurringScope = "this" | "following" | "all";
 
 type CalendarGridProps = {
   weekDates: Date[];
@@ -19,7 +22,25 @@ type CalendarGridProps = {
   colors: ColorsMap;
   defaultColor: string | null;
   onSelectEvent: (event: CalendarEvent, position?: { x: number; y: number }) => void;
-  onEventUpdate?: (eventId: string, calendarId: string | undefined, newStart: string, newEnd: string) => void;
+  onEventUpdate?: (
+    eventId: string,
+    calendarId: string | undefined,
+    newStart: string,
+    newEnd: string,
+    scope?: RecurringScope,
+    recurringEventId?: string
+  ) => void;
+};
+
+type PendingRecurringDrag = {
+  eventId: string;
+  calendarId: string | undefined;
+  recurringEventId: string;
+  newStart: string;
+  newEnd: string;
+  event: CalendarEvent;
+  anchor: { x: number; y: number };
+  mode: "move" | "resize";
 };
 
 type EventOverride = {
@@ -48,24 +69,20 @@ function CalendarGridComponent({
   // Optimistic overrides: events that have been dragged but API hasn't refreshed yet
   const [eventOverrides, setEventOverrides] = useState<Map<string, EventOverride>>(new Map());
 
-  // Called when drag finishes — stores optimistic override + fires API call
-  const handleDragEnd = useCallback(
-    (eventId: string, calendarId: string | undefined, newStart: string, newEnd: string, event: CalendarEvent) => {
-      // Optimistic update: store the event with new times so it renders instantly
+  // Pending recurring drag — waiting for user to pick a scope
+  const [pendingRecurringDrag, setPendingRecurringDrag] = useState<PendingRecurringDrag | null>(null);
+
+  // Helper: apply optimistic override + fire API call
+  const applyDragUpdate = useCallback(
+    (eventId: string, calendarId: string | undefined, newStart: string, newEnd: string, event: CalendarEvent, scope?: RecurringScope, recurringEventId?: string) => {
       setEventOverrides((prev) => {
         const next = new Map(prev);
-        next.set(eventId, {
-          event,
-          startDateTime: newStart,
-          endDateTime: newEnd,
-        });
+        next.set(eventId, { event, startDateTime: newStart, endDateTime: newEnd });
         return next;
       });
 
-      // Fire the API call (CalendarPanel will PATCH + triggerRefresh)
-      onEventUpdate?.(eventId, calendarId, newStart, newEnd);
+      onEventUpdate?.(eventId, calendarId, newStart, newEnd, scope, recurringEventId);
 
-      // Safety net: clear override after 8s even if refresh never arrives
       setTimeout(() => {
         setEventOverrides((prev) => {
           if (!prev.has(eventId)) return prev;
@@ -77,6 +94,80 @@ function CalendarGridComponent({
     },
     [onEventUpdate]
   );
+
+  // Called when drag finishes — intercepts recurring events to show scope dialog
+  const handleDragEnd = useCallback(
+    (eventId: string, calendarId: string | undefined, newStart: string, newEnd: string, event: CalendarEvent, dropPosition: { x: number; y: number }) => {
+      // If the event didn't actually move, do nothing (user dropped it back in place)
+      const originalStart = event.start?.dateTime;
+      const originalEnd = event.end?.dateTime;
+      if (originalStart && originalEnd && newStart === new Date(originalStart).toISOString() && newEnd === new Date(originalEnd).toISOString()) {
+        return;
+      }
+
+      if (event.recurringEventId) {
+        // Recurring event: set optimistic override so it stays at new position, then show dialog
+        setEventOverrides((prev) => {
+          const next = new Map(prev);
+          next.set(eventId, { event, startDateTime: newStart, endDateTime: newEnd });
+          return next;
+        });
+
+        // Anchor the dialog near the drop position
+        setPendingRecurringDrag({
+          eventId,
+          calendarId,
+          recurringEventId: event.recurringEventId,
+          newStart,
+          newEnd,
+          event,
+          anchor: dropPosition,
+          mode: "move",
+        });
+        return;
+      }
+
+      // Non-recurring: proceed immediately
+      applyDragUpdate(eventId, calendarId, newStart, newEnd, event);
+    },
+    [applyDragUpdate]
+  );
+
+  // Handle scope selection from the recurring dialog
+  const handleRecurringScopeSelect = useCallback(
+    (scope: RecurringScope) => {
+      if (!pendingRecurringDrag) return;
+      const { eventId, calendarId, newStart, newEnd, event, recurringEventId } = pendingRecurringDrag;
+
+      // The optimistic override is already applied — now fire the API call
+      onEventUpdate?.(eventId, calendarId, newStart, newEnd, scope, recurringEventId);
+
+      // Safety net: clear override after 8s
+      setTimeout(() => {
+        setEventOverrides((prev) => {
+          if (!prev.has(eventId)) return prev;
+          const next = new Map(prev);
+          next.delete(eventId);
+          return next;
+        });
+      }, 8000);
+
+      setPendingRecurringDrag(null);
+    },
+    [pendingRecurringDrag, onEventUpdate]
+  );
+
+  // Handle cancel from recurring dialog — revert optimistic override
+  const handleRecurringScopeCancel = useCallback(() => {
+    if (pendingRecurringDrag) {
+      setEventOverrides((prev) => {
+        const next = new Map(prev);
+        next.delete(pendingRecurringDrag.eventId);
+        return next;
+      });
+    }
+    setPendingRecurringDrag(null);
+  }, [pendingRecurringDrag]);
 
   // Wrap getEventsForDay to apply optimistic overrides
   const getEventsWithOverrides = useCallback(
@@ -145,11 +236,11 @@ function CalendarGridComponent({
     prevWeekKeyRef.current = weekKey;
   }, [weekKey]);
 
-  // Update current time position every minute
+  // Update current time position every second for precise tracking
   useEffect(() => {
     const interval = setInterval(() => {
       setCurrentTimePos(getCurrentTimePosition());
-    }, 60000);
+    }, 1000);
     return () => clearInterval(interval);
   }, []);
 
@@ -157,7 +248,7 @@ function CalendarGridComponent({
   useEffect(() => {
     if (scrollRef.current) {
       const now = new Date();
-      const currentHour = now.getHours() + now.getMinutes() / 60;
+      const currentHour = now.getHours() + now.getMinutes() / 60 + now.getSeconds() / 3600;
       const targetHour = Math.max(0, currentHour - 1);
       scrollRef.current.scrollTop = targetHour * HOUR_HEIGHT;
     }
@@ -168,7 +259,8 @@ function CalendarGridComponent({
     if (scrollToTime && scrollRef.current) {
       const hour = scrollToTime.getHours();
       const minutes = scrollToTime.getMinutes();
-      const targetHour = Math.max(0, hour + minutes / 60 - 1);
+      const seconds = scrollToTime.getSeconds();
+      const targetHour = Math.max(0, hour + minutes / 60 + seconds / 3600 - 1);
       const scrollPosition = targetHour * HOUR_HEIGHT;
 
       scrollRef.current.scrollTo({
@@ -264,6 +356,17 @@ function CalendarGridComponent({
           </div>
         </div>
       </div>
+
+      {/* Recurring scope dialog */}
+      {pendingRecurringDrag && (
+        <RecurringScopeDialog
+          anchor={pendingRecurringDrag.anchor}
+          eventSummary={pendingRecurringDrag.event.summary || ""}
+          action={pendingRecurringDrag.mode}
+          onSelect={handleRecurringScopeSelect}
+          onCancel={handleRecurringScopeCancel}
+        />
+      )}
     </div>
   );
 }

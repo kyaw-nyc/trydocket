@@ -90,17 +90,28 @@ export default function CalendarPanel() {
   }, []);
 
   const handleEventUpdate = useCallback(
-    async (eventId: string, calendarId: string | undefined, newStart: string, newEnd: string) => {
+    async (
+      eventId: string,
+      calendarId: string | undefined,
+      newStart: string,
+      newEnd: string,
+      scope?: "this" | "following" | "all",
+      recurringEventId?: string
+    ) => {
       try {
+        // For "all" scope, PATCH the master recurring event instead of the instance
+        const targetId = scope === "all" && recurringEventId ? recurringEventId : eventId;
         const query = calendarId ? `?calendarId=${encodeURIComponent(calendarId)}` : "";
         const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
-        await fetch(`/api/calendar/events/${encodeURIComponent(eventId)}${query}`, {
+        await fetch(`/api/calendar/events/${encodeURIComponent(targetId)}${query}`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             startDateTime: newStart,
             endDateTime: newEnd,
             timeZone,
+            scope: scope || "this",
+            recurringEventId,
           }),
         });
       } catch {

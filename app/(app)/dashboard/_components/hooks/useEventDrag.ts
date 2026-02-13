@@ -30,7 +30,8 @@ type UseEventDragOptions = {
     calendarId: string | undefined,
     newStart: string,
     newEnd: string,
-    event: CalendarEvent
+    event: CalendarEvent,
+    dropPosition: { x: number; y: number }
   ) => void;
   onSelect: (event: CalendarEvent, position?: { x: number; y: number }) => void;
 };
@@ -211,8 +212,8 @@ export function useEventDrag({
           const newStart = buildDateTime(targetDate, startMin);
           const newEnd = buildDateTime(targetDate, endMin);
 
-          // Pass event object so caller can do optimistic update
-          onDragEnd(dr.item.event.id, dr.item.event.calendarId, newStart, newEnd, dr.item.event);
+          // Pass event object + drop position so caller can do optimistic update
+          onDragEnd(dr.item.event.id, dr.item.event.calendarId, newStart, newEnd, dr.item.event, { x: ue.clientX, y: ue.clientY });
         }
 
         cleanUp();

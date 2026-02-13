@@ -133,3 +133,18 @@ export async function getEvent(
   });
   return res.data;
 }
+
+export async function updateEventRecurrence(
+  accessToken: string,
+  eventId: string,
+  recurrence: string[],
+  calendarId = "primary"
+) {
+  const calendar = getCalendar(accessToken);
+  const res = await calendar.events.patch({
+    calendarId,
+    eventId,
+    requestBody: { recurrence },
+  });
+  return res.data;
+}

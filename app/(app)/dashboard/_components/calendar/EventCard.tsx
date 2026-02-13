@@ -319,9 +319,13 @@ function EventCardComponent({ item, colors, defaultColor, onSelect, onDragStart,
       {!isDragTarget && (
         <div
           onPointerDown={handlePointerDownResize}
-          className="absolute bottom-0 left-0 right-0 h-2 cursor-s-resize"
+          className="absolute bottom-0 left-0 right-0 h-3 cursor-s-resize group/resize"
           style={{ touchAction: "none" }}
-        />
+        >
+          <div className="absolute bottom-0.5 left-1/3 right-1/3 h-[3px] rounded-full opacity-0 group-hover/resize:opacity-60 transition-opacity"
+            style={{ backgroundColor: textColor }}
+          />
+        </div>
       )}
     </div>
   );

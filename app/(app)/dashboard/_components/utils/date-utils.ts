@@ -59,8 +59,8 @@ export function isToday(date: Date): boolean {
 
 export function getCurrentTimePosition(): number {
   const now = new Date();
-  const minutes = now.getHours() * 60 + now.getMinutes();
-  return (minutes / 60) * HOUR_HEIGHT;
+  const totalSeconds = now.getHours() * 3600 + now.getMinutes() * 60 + now.getSeconds();
+  return (totalSeconds / 3600) * HOUR_HEIGHT;
 }
 
 export function getTimeZoneAbbr(): string {
