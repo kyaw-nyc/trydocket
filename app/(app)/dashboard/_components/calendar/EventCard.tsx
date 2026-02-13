@@ -10,15 +10,19 @@ import { Button } from "@/components/ui/button";
 import { Check, X, Loader2, Trash2 } from "lucide-react";
 import { useCalendar } from "../CalendarContext";
 import { cn } from "@/lib/utils";
+import type { DragMode } from "../hooks/useEventDrag";
 
 type EventCardProps = {
   item: PositionedEvent;
   colors: ColorsMap;
   defaultColor: string | null;
   onSelect: (event: CalendarEvent, position?: { x: number; y: number }) => void;
+  onDragStart?: (e: React.PointerEvent, mode: DragMode, item: PositionedEvent, dayIndex: number) => void;
+  dayIndex?: number;
+  isDragTarget?: boolean;
 };
 
-function EventCardComponent({ item, colors, defaultColor, onSelect }: EventCardProps) {
+function EventCardComponent({ item, colors, defaultColor, onSelect, onDragStart, dayIndex = 0, isDragTarget }: EventCardProps) {
   const { event, top, height, leftPercent, widthPercent } = item;
   const { clearPendingEvents, confirmPendingEvents, isConfirming, pendingEvents, pendingDeletions, clearPendingDeletions, confirmPendingDeletions, isDeleting, theme } = useCalendar();
 
@@ -45,14 +49,21 @@ function EventCardComponent({ item, colors, defaultColor, onSelect }: EventCardP
 
   const isDark = theme === "dark";
 
-  const handleClick = (e: React.MouseEvent) => {
-    if (event.isPending || event.isPendingDeletion) return;
-    onSelect(event, { x: e.clientX, y: e.clientY });
+  const canDrag = !event.isPending && !event.isPendingDeletion;
+
+  const handlePointerDownMove = (e: React.PointerEvent) => {
+    if (!canDrag || !onDragStart) return;
+    onDragStart(e, "move", item, dayIndex);
+  };
+
+  const handlePointerDownResize = (e: React.PointerEvent) => {
+    if (!canDrag || !onDragStart) return;
+    e.stopPropagation();
+    onDragStart(e, "resize", item, dayIndex);
   };
 
   // Event marked for deletion - show deletion styling (banner only on first event)
   if (event.isPendingDeletion) {
-    const bannerBg = isDark ? "bg-red-600" : "bg-red-500";
     const bannerText = "text-white";
     const bannerHover = "hover:bg-red-700";
     const arrowColor = isDark ? "border-red-600" : "border-red-500";
@@ -157,7 +168,6 @@ function EventCardComponent({ item, colors, defaultColor, onSelect }: EventCardP
 
   // Pending event with optional action banner
   if (event.isPending) {
-    const bannerBg = isDark ? "bg-white" : "bg-gray-900";
     const bannerText = isDark ? "text-gray-900" : "text-white";
     const bannerHover = isDark ? "hover:bg-gray-200" : "hover:bg-gray-700";
     const arrowColor = isDark ? "border-white" : "border-gray-900";
@@ -267,10 +277,11 @@ function EventCardComponent({ item, colors, defaultColor, onSelect }: EventCardP
 
   const eventContent = (
     <div
-      onClick={handleClick}
+      onPointerDown={handlePointerDownMove}
       className={cn(
-        "absolute overflow-hidden rounded-lg text-xs transition-all touch-manipulation cursor-pointer hover:shadow-sm active:scale-[0.98] event-card-hover",
-        isCompact ? "px-1 py-0.5" : "px-1.5 sm:px-2.5 py-1 sm:py-1.5"
+        "absolute overflow-hidden rounded-lg text-xs transition-all cursor-grab hover:shadow-sm active:cursor-grabbing event-card-hover select-none",
+        isCompact ? "px-1 py-0.5" : "px-1.5 sm:px-2.5 py-1 sm:py-1.5",
+        isDragTarget && "pointer-events-none opacity-0"
       )}
       style={{
         top,
@@ -283,6 +294,7 @@ function EventCardComponent({ item, colors, defaultColor, onSelect }: EventCardP
         backgroundColor: "var(--event-bg)",
         color: textColor,
         borderLeft: `2px solid ${darkenColor(color.background, 20)}`,
+        touchAction: "none",
       } as React.CSSProperties}
     >
       <div className={cn("flex items-center", isCompact ? "gap-0.5" : "gap-1 sm:gap-1.5")}>
@@ -303,8 +315,20 @@ function EventCardComponent({ item, colors, defaultColor, onSelect }: EventCardP
           {event.location}
         </p>
       )}
+      {/* Resize handle at bottom edge */}
+      {!isDragTarget && (
+        <div
+          onPointerDown={handlePointerDownResize}
+          className="absolute bottom-0 left-0 right-0 h-2 cursor-s-resize"
+          style={{ touchAction: "none" }}
+        />
+      )}
     </div>
   );
+
+  if (isDragTarget) {
+    return eventContent;
+  }
 
   return (
     <Tooltip>

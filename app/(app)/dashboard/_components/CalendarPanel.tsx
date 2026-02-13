@@ -89,6 +89,29 @@ export default function CalendarPanel() {
     setPopoverAnchor(null);
   }, []);
 
+  const handleEventUpdate = useCallback(
+    async (eventId: string, calendarId: string | undefined, newStart: string, newEnd: string) => {
+      try {
+        const query = calendarId ? `?calendarId=${encodeURIComponent(calendarId)}` : "";
+        const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+        await fetch(`/api/calendar/events/${encodeURIComponent(eventId)}${query}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            startDateTime: newStart,
+            endDateTime: newEnd,
+            timeZone,
+          }),
+        });
+      } catch {
+        // Network error — refresh will restore original position
+      } finally {
+        triggerRefresh();
+      }
+    },
+    [triggerRefresh]
+  );
+
   return (
     <div className={cn("flex h-full w-full flex-col", isDark ? "dark" : "")}>
       {/* Header - spans full width */}
@@ -129,6 +152,7 @@ export default function CalendarPanel() {
             colors={colors}
             defaultColor={defaultColor}
             onSelectEvent={handleSelectEvent}
+            onEventUpdate={handleEventUpdate}
           />
         </div>
       </div>
