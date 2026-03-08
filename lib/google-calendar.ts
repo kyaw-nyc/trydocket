@@ -148,3 +148,13 @@ export async function updateEventRecurrence(
   });
   return res.data;
 }
+
+export async function getCalendarTimezone(accessToken: string): Promise<string | null> {
+  try {
+    const calendar = getCalendar(accessToken);
+    const res = await calendar.settings.get({ setting: "timezone" });
+    return res.data.value || null;
+  } catch {
+    return null;
+  }
+}

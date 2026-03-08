@@ -1,5 +1,6 @@
 import { createClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
+import { getCalendarTimezone } from '@/lib/google-calendar'
 
 export async function GET(request: Request) {
   const { searchParams, origin } = new URL(request.url)
@@ -15,10 +16,14 @@ export async function GET(request: Request) {
       const { provider_token, provider_refresh_token } = data.session
 
       if (provider_token) {
+        // Fetch timezone from Google Calendar settings so events use the correct timezone
+        const googleTimezone = await getCalendarTimezone(provider_token)
+
         await supabase.from('profiles').update({
           google_access_token: provider_token,
           google_refresh_token: provider_refresh_token,
           google_token_expires_at: new Date(Date.now() + 3600 * 1000).toISOString(),
+          ...(googleTimezone ? { timezone: googleTimezone } : {}),
         }).eq('id', data.session.user.id)
       }
 

@@ -178,17 +178,18 @@ export function CalendarProvider({ children }: { children: ReactNode }) {
     }
   }, [isLoadingTheme, showThemeModal, checkOnboarding]);
 
-  // Sync detected timezone to profiles on mount
+  // Sync timezone on mount: prefer stored value (set from Google Calendar on login),
+  // fall back to browser detection if nothing is stored yet.
   useEffect(() => {
     const syncTimezone = async () => {
       try {
-        const detected = Intl.DateTimeFormat().resolvedOptions().timeZone;
-        if (detected) {
-          const res = await fetch("/api/user/timezone");
-          if (res.ok) {
-            const data = await res.json();
-            if (!data.timezone) {
-              // No timezone stored yet, save detected one
+        const res = await fetch("/api/user/timezone");
+        if (res.ok) {
+          const data = await res.json();
+          if (!data.timezone) {
+            // No timezone stored (e.g. legacy user before Google Calendar sync) — save browser-detected one
+            const detected = Intl.DateTimeFormat().resolvedOptions().timeZone;
+            if (detected) {
               await fetch("/api/user/timezone", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
